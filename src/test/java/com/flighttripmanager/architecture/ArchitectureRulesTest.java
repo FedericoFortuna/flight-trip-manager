@@ -41,6 +41,7 @@ class ArchitectureRulesTest {
                 source("trips.application.contract.TripView", "public record TripView(java.util.UUID id, String[] notes) {}"),
                 source("trips.application.port.in.ReadTrip", "public interface ReadTrip { architecturefixtures.trips.application.contract.TripView read(); }"),
                 source("trips.application.port.out.TripStore", "public interface TripStore {}"),
+                source("trips.application.mapper.TripMapper", "@org.mapstruct.Mapper public interface TripMapper { architecturefixtures.trips.application.contract.TripView map(architecturefixtures.trips.domain.model.Trip trip); }"),
                 source("trips.application.usecase.ReadTripService", "public class ReadTripService implements architecturefixtures.trips.application.port.in.ReadTrip { architecturefixtures.trips.application.port.out.TripStore store; public architecturefixtures.trips.application.contract.TripView read() { return null; } }"),
                 source("trips.infrastructure.persistence.entity.TripJpaEntity", "@jakarta.persistence.Entity public class TripJpaEntity { @jakarta.persistence.Id java.util.UUID id; }"),
                 source("trips.infrastructure.persistence.repository.TripJpaRepository", "public interface TripJpaRepository extends org.springframework.data.repository.Repository<architecturefixtures.trips.infrastructure.persistence.entity.TripJpaEntity, java.util.UUID> {}"),
@@ -139,7 +140,7 @@ class ArchitectureRulesTest {
     Stream<DynamicTest> acceptLegalHexagonalDependencies() {
         JavaClasses valid = select("shared.domain.Money", "shared.api.error.ApiError", "trips.api.dto.ErrorReference", "catalog.application.contract.CatalogView",
                 "trips.domain.model.Trip", "trips.application.contract.TripView", "trips.application.port.in.ReadTrip",
-                "trips.application.port.out.TripStore", "trips.application.usecase.ReadTripService",
+                "trips.application.port.out.TripStore", "trips.application.usecase.ReadTripService", "trips.application.mapper.TripMapper",
                 "trips.infrastructure.persistence.entity.TripJpaEntity", "trips.infrastructure.persistence.repository.TripJpaRepository",
                 "trips.api.controller.GoodController", "flights.infrastructure.adapter.GoodTripAdapter", "bootstrap.workflows.GoodWorkflow");
         return new ArchitectureRules(ROOT).all().stream().map(rule ->

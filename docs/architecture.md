@@ -54,8 +54,8 @@ Una base PostgreSQL con esquemas funcionales y secuencia Flyway global.
 dominio en sus respectivas cards; no habrá relaciones JPA entre módulos.
 Las FK entre esquemas podrán reforzar integridad y se documentarán al introducirlas.
 
-V1 sólo crea esquemas; por eso `ddl-auto=validate` aún no valida tablas de negocio.
-No se introducen tablas ficticias para ejercitar Hibernate.
+V1 crea los esquemas; V2 agrega las tres tablas del catálogo local.
+`ddl-auto=validate` comprueba sus entidades JPA al arrancar.
 
 ## Límites de CARD 0
 
@@ -73,7 +73,9 @@ Referencia de ArchUnit: https://www.archunit.org/userguide/html/000_Index.html.
   sin Spring, JPA, Jackson, HTTP o SDKs. Normalización al tipo base para arrays.
 - Aplicación: dominio/puertos propios y contratos permitidos; sin API, persistencia,
   HTTP o SDKs. Sólo se permiten anotaciones Spring de componentes/transacciones
-  y SLF4J como dependencias técnicas adicionales. Los contratos públicos son puros.
+  y SLF4J como dependencias técnicas adicionales. CARD 1 permite también MapStruct
+  para mapeos de dominio a contratos; no habilita HTTP/JPA. Los contratos públicos
+  siguen siendo puros y no pueden depender de MapStruct.
 - API: sin infraestructura, repositorios ni implementaciones de application.
   Controllers deben estar en API y usar puertos de entrada/DTOs, no modelos de dominio.
 - Modelos anotados JPA únicamente en infrastructure.persistence.entity.
@@ -95,6 +97,36 @@ JaCoCo exige >=80% de líneas de producción en verify (BUNDLE, sin exclusiones
 configuradas). Enforcer exige los datos de cobertura. Surefire/Failsafe exigen
 tests presentes. La aceptación reproducible es `clean verify`, sin omitir tests;
 el build Docker usa package porque la verificación completa ocurre antes.
+
+## ADR 003 — Catálogo local de consulta (CARD 1)
+
+El catálogo es dueño de Airport, Airline y Location. Las consultas HTTP invocan
+`CatalogLookup`; los módulos consumidores sólo acceden a ese puerto y a sus
+contratos públicos. `CatalogStore` es un puerto saliente privado del módulo,
+implementado por Spring Data JPA. Las tres fronteras usan MapStruct:
+JPA → dominio → contrato de aplicación → respuesta HTTP.
+
+Los casos de uso ejecutan transacciones de sólo lectura; no exponen Page de Spring,
+entidades JPA ni tipos de dominio a otros módulos. El dominio es Java puro y
+valida identidad, textos, códigos, coordenadas y zona horaria.
+LocationKind es el enum del contrato y se mapea al LocationType interno.
+
+Se exige IATA en este MVP porque el detalle de aeropuertos/aerolíneas usa ese código;
+ICAO y fecha de sincronización son opcionales. Aeropuertos requieren una zona
+horaria reconocida por Java; coordenadas son opcionales como par. No se inventa
+un timestamp de sincronización ni se usa UTC como sustituto de una zona desconocida.
+Location soporta CITY/TRAIN_STATION/BUS_STATION, sin coordenadas ni pertenencia a Trip.
+
+Los listados se acotan a 100 registros, con orden name/id y filtro literal.
+La paginación por offset es suficiente para el catálogo local; no garantiza una
+foto estable entre peticiones si los datos cambian. Una búsqueda de subcadena
+puede recorrer la tabla: no se introduce un motor de búsqueda ni índices GIN
+sin medir antes volumen y latencia.
+
+Las tablas vacías son un estado válido. Carga, normalización de proveedores,
+identidad externa y sincronización quedan en CARD 1.1. Antes de importar,
+reevaluar códigos compartidos/reasignados y locations homónimas: la identidad
+natural mínima actual no resuelve desambiguación geográfica mundial.
 
 ## Decisiones funcionales por cerrar antes de sus cards
 

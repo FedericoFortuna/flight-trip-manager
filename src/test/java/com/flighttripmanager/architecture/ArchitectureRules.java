@@ -70,6 +70,7 @@ final class ArchitectureRules {
             return !(jdk(to) || (internal(to) && Set.of("domain", "application").contains(layer(to)))
                     || to.getName().startsWith("org.springframework.stereotype.")
                     || to.getName().startsWith("org.springframework.transaction.annotation.")
+                    || to.getName().startsWith("org.mapstruct.")
                     || to.getName().startsWith("org.slf4j."));
         });
     }

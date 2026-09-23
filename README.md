@@ -7,8 +7,9 @@ hexagonal, sin frontend ni autenticación en el MVP local.
 
 CARD 0 implementa la infraestructura de arranque y CARD 0.1 agrega errores HTTP
 uniformes y observabilidad. CARD 0.2 exige límites arquitectónicos y cobertura mínima.
-No hay todavía
-endpoints funcionales `/api/v1`, entidades JPA ni integraciones externas activas.
+CARD 1 incorpora el catálogo local de aeropuertos, aerolíneas y ubicaciones:
+seis consultas `/api/v1`, entidades JPA separadas del dominio y migración V2.
+No hay integraciones externas activas ni carga inicial de datos.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
 
 Validación de CARD 0 (2026-09-23): `clean verify` correcto (1 test unitario y 5 de
@@ -47,7 +48,7 @@ Los puertos publicados están restringidos a `127.0.0.1`.
 - Swagger UI: http://localhost:8080/swagger-ui/index.html
 - OpenAPI: http://localhost:8080/v3/api-docs
 
-Swagger todavía no contiene operaciones funcionales. Actuator no publica datos
+Swagger documenta las seis consultas del catálogo. Actuator no publica datos
 de configuración ni detalles de conexión. `docker compose down` conserva los
 datos en el volumen; `docker compose down -v` los elimina deliberadamente.
 Cambiar credenciales de `.env` no modifica un usuario en un volumen ya creado.
@@ -93,8 +94,8 @@ Cada módulo funcional incorporará `domain`, `application`, `infrastructure` y
 `api`. El dominio será Java puro. Los módulos se comunican por puertos y contratos;
 no por entidades JPA ni repositorios ajenos. `bootstrap` configura y coordina.
 
-Flyway ejecuta `V1__create_module_schemas.sql`: siete esquemas funcionales, sin
-tablas de negocio. `shared` no posee tablas. La tabla técnica de historial de
+Flyway ejecuta V1 (siete esquemas funcionales) y V2 (tablas `catalog.airports`,
+`catalog.airlines` y `catalog.locations`). `shared` no posee tablas. El historial de
 Flyway vive en `public`. Las próximas migraciones usan números globales crecientes.
 Nunca modificar una migración aplicada: agregar otra.
 
@@ -131,7 +132,8 @@ Informes: `target/surefire-reports`, `target/failsafe-reports` y
 `clean verify` exige cobertura global de líneas >=80% con JaCoCo, combinando tests
 unitarios e integración y sin exclusiones configuradas. Maven falla si falta
 `target/jacoco.exec`, si no encuentra tests unitarios/de integración o si ArchUnit
-detecta una infracción. No hay aún lógica de negocio sobre la cual afirmar cobertura funcional.
+detecta una infracción. CARD 1 prueba invariantes del catálogo, consultas y errores
+por HTTP real, mapeos, restricciones SQL y contratos OpenAPI.
 
 ArchUnit analiza sólo bytecode de producción. Las reglas de dominio, capas,
 contratos, controllers, entidades JPA y módulos se ejecutan con los unitarios.
@@ -157,8 +159,41 @@ Duffel, AirLabs y OpenSky se incorporarán detrás de puertos, con mocks y prueb
 que no dependan de servicios reales. No se permite scraping ni ofertas de OTAs.
 Caffeine, resiliencia y scheduler se añadirán cuando exista su primer consumidor.
 
-Próxima card: catálogo local (1). No hay tablas de negocio,
-índices funcionales, jobs ni endpoints para gestionar viajes todavía.
+Próxima card: 1.1 — carga/sincronización del catálogo. No hay jobs ni endpoints
+para gestionar viajes todavía.
+
+## Catálogo local (CARD 1)
+
+| Método | Ruta | Consulta |
+| --- | --- | --- |
+| GET | `/api/v1/airports` | Aeropuertos por código, nombre, ciudad o país |
+| GET | `/api/v1/airports/{iataCode}` | Aeropuerto por IATA de 3 letras |
+| GET | `/api/v1/airlines` | Aerolíneas por código, nombre o país |
+| GET | `/api/v1/airlines/{iataCode}` | Aerolínea por IATA de 2 caracteres alfanuméricos |
+| GET | `/api/v1/locations` | Ciudades/estaciones por nombre, ciudad o país |
+| GET | `/api/v1/locations/{id}` | Ubicación por UUID |
+
+Listados: `q` opcional (máximo 100 caracteres, se recortan espacios), `page=0`
+(0..1000000) y `size=20` (1..100). Búsqueda de subcadena literal sin distinguir
+mayúsculas; no elimina acentos. Orden fijo por nombre y UUID.
+Respuesta: `items`, `page`, `size`, `totalElements`, `totalPages`.
+Una página vacía devuelve 200 y conserva el total de coincidencias.
+
+Aeropuertos/aerolíneas: `active=true` por defecto; `false` lista sólo inactivos.
+El detalle incluye inactivos para referencias históricas y acepta IATA en minúscula.
+Ubicaciones: filtro opcional `type=CITY|TRAIN_STATION|BUS_STATION`.
+Los aeropuertos no son locations. País usa código de dos letras en mayúsculas.
+
+Ejemplos: `GET /api/v1/airports?q=buenos&size=10` y
+`GET /api/v1/locations?type=TRAIN_STATION&q=central`.
+Recurso inexistente: 404 con `AIRPORT_NOT_FOUND`, `AIRLINE_NOT_FOUND` o
+`LOCATION_NOT_FOUND`; parámetros inválidos: 400 con el contrato de error común.
+
+La base nueva queda vacía deliberadamente: no hay semillas ficticias de producción,
+POST, PUT, DELETE ni sincronización implícita al consultar. Las fixtures viven
+en `src/test/resources` y sólo se cargan en PostgreSQL efímero de Testcontainers.
+Los timestamps desconocidos y coordenadas desconocidas se conservan como null.
+Decisiones, migración y evidencia: [CARD 1](docs/cards/card-1-local-catalog.md).
 
 ## Errores HTTP y logs
 
