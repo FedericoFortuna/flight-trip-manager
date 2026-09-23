@@ -22,11 +22,14 @@ Cada módulo mantiene dominio sin frameworks, aplicación con puertos, infraestr
 y API HTTP. No se crean implementaciones funcionales ni repositorios en el bootstrap.
 MapStruct y Lombok están disponibles, pero no se inventan mappers para justificar su uso.
 
-## Dependencias futuras permitidas
+## Dependencias permitidas
 
-Todas se limitan a contratos de aplicación públicos; no al dominio o persistencia
-de otro módulo. Los puertos de salida pertenecen al consumidor y los adapters
-traducen contratos ajenos.
+Los módulos funcionales exponen `application.contract` y `application.port.in`;
+nunca dominio, repositorios, puertos de salida ni implementaciones. Los puertos
+de salida pertenecen al consumidor y sus adapters traducen contratos ajenos.
+`shared.domain` permite reutilizar valores comunes, excluyendo abstracciones de
+repositorio. La API también puede referenciar el contrato HTTP `shared.api.error.ApiError`.
+No se permite consumir `shared.infrastructure` ni servicios internos de shared.
 
 | Consumidor | Módulos permitidos |
 | --- | --- |
@@ -59,6 +62,39 @@ No se introducen tablas ficticias para ejercitar Hibernate.
 No auth, frontend, providers, scheduler, cachés o reglas de negocio. Los paquetes
 raíz documentan propiedad; sus capas internas aparecen cuando se implementan.
 Errores uniformes y masking: CARD 0.1. ArchUnit y gate global >=80%: CARD 0.2.
+
+## ADR 002 — Controles ejecutables (CARD 0.2)
+
+Estado: implementado. Reglas en `src/test/java/com/flighttripmanager/architecture`.
+Referencia de ArchUnit: https://www.archunit.org/userguide/html/000_Index.html.
+
+- Código bajo módulos declarados y capas domain/application/infrastructure/api.
+- Dominio: JDK (sin java.net/java.sql), dominio propio y valores de shared.domain;
+  sin Spring, JPA, Jackson, HTTP o SDKs. Normalización al tipo base para arrays.
+- Aplicación: dominio/puertos propios y contratos permitidos; sin API, persistencia,
+  HTTP o SDKs. Sólo se permiten anotaciones Spring de componentes/transacciones
+  y SLF4J como dependencias técnicas adicionales. Los contratos públicos son puros.
+- API: sin infraestructura, repositorios ni implementaciones de application.
+  Controllers deben estar en API y usar puertos de entrada/DTOs, no modelos de dominio.
+- Modelos anotados JPA únicamente en infrastructure.persistence.entity.
+- Matriz de módulos verificada y ciclos prohibidos, incluyendo bootstrap/shared.
+- bootstrap.configuration es la raíz de ensamblado y puede conectar componentes;
+  bootstrap.workflows sólo coordina contratos/puertos de entrada. Ningún módulo
+  funcional puede depender de bootstrap.
+
+No se congela deuda existente ni se habilitan reglas vacías globalmente. Se importa
+el directorio que contiene la aplicación compilada y se verifica que la clase
+principal esté presente. Las reglas aplicables a capas todavía ausentes se prueban
+con fixtures compilados que demuestran tanto aceptación como rechazo.
+
+Límites: ArchUnit verifica dependencias estáticas del bytecode, no reflexión por
+strings, SQL construido dinámicamente ni la semántica interna de métodos. Eso
+requiere revisión y tests funcionales en las cards correspondientes.
+
+JaCoCo exige >=80% de líneas de producción en verify (BUNDLE, sin exclusiones
+configuradas). Enforcer exige los datos de cobertura. Surefire/Failsafe exigen
+tests presentes. La aceptación reproducible es `clean verify`, sin omitir tests;
+el build Docker usa package porque la verificación completa ocurre antes.
 
 ## Decisiones funcionales por cerrar antes de sus cards
 

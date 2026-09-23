@@ -6,7 +6,8 @@ hexagonal, sin frontend ni autenticación en el MVP local.
 ## Estado
 
 CARD 0 implementa la infraestructura de arranque y CARD 0.1 agrega errores HTTP
-uniformes y observabilidad. No hay todavía
+uniformes y observabilidad. CARD 0.2 exige límites arquitectónicos y cobertura mínima.
+No hay todavía
 endpoints funcionales `/api/v1`, entidades JPA ni integraciones externas activas.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
 
@@ -127,8 +128,27 @@ están fuera del paquete de aplicación y no se incluyen en el JAR.
 Informes: `target/surefire-reports`, `target/failsafe-reports` y
 `target/site/jacoco/index.html`. JaCoCo mide unitarios e integración.
 
-El gate global de 80% y los tests ArchUnit se incorporan en CARD 0.2. No hay aún
-lógica de negocio sobre la cual afirmar cobertura funcional.
+`clean verify` exige cobertura global de líneas >=80% con JaCoCo, combinando tests
+unitarios e integración y sin exclusiones configuradas. Maven falla si falta
+`target/jacoco.exec`, si no encuentra tests unitarios/de integración o si ArchUnit
+detecta una infracción. No hay aún lógica de negocio sobre la cual afirmar cobertura funcional.
+
+ArchUnit analiza sólo bytecode de producción. Las reglas de dominio, capas,
+contratos, controllers, entidades JPA y módulos se ejecutan con los unitarios.
+Los fixtures positivos y negativos se compilan en un directorio temporal; no
+entran al JAR ni al cálculo de cobertura. También cubren arrays y tipos de SDK externos.
+
+Comprobación opcional de rechazo de los gates (PowerShell 7 en Windows, sin Docker):
+
+```powershell
+.\scripts\verify-quality-gates.ps1
+```
+
+El script copia el POM a un proyecto aislado bajo `.tools/quality-gates-*`, comprueba
+que falla con cobertura insuficiente y con datos ausentes, y conserva los logs.
+No modifica fuentes ni reportes del proyecto principal. Para aceptar una card usar
+siempre `clean verify` sin flags que omitan tests/instrumentación; `test` y `package`
+por sí solos no ejecutan el gate final. Los reportes viejos no constituyen evidencia.
 
 ## Proveedores y límites actuales
 
@@ -137,7 +157,7 @@ Duffel, AirLabs y OpenSky se incorporarán detrás de puertos, con mocks y prueb
 que no dependan de servicios reales. No se permite scraping ni ofertas de OTAs.
 Caffeine, resiliencia y scheduler se añadirán cuando exista su primer consumidor.
 
-Pendientes inmediatos: reglas de arquitectura y gate de cobertura (0.2), luego catálogo local (1). No hay tablas de negocio,
+Próxima card: catálogo local (1). No hay tablas de negocio,
 índices funcionales, jobs ni endpoints para gestionar viajes todavía.
 
 ## Errores HTTP y logs
@@ -177,3 +197,5 @@ loggear cuerpos, headers, DTOs o secretos sin etiqueta. El MDC se restaura al
 terminar cada petición síncrona; async requerirá adaptación explícita.
 
 Decisiones y resultados: [CARD 0.1](docs/cards/card-0.1-errors-observability.md).
+
+Reglas y gates: [CARD 0.2](docs/cards/card-0.2-architecture-quality-gates.md).
