@@ -1,0 +1,9 @@
+# No credentials, connection URLs or documentation exposure defaults in production.
+spring:
+  jpa:
+    show-sql: false
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

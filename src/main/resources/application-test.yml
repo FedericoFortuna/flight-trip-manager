@@ -1,0 +1,10 @@
+# Database credentials are supplied exclusively by Testcontainers.
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 3
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
