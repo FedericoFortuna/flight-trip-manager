@@ -256,7 +256,7 @@ class CatalogImportIT {
                 insert into catalog.locations(id,type,name,city,country)
                 values ('00000000-0000-0000-0000-000000000002','CITY','Existing City','Existing City','AR')
                 """);
-        var migrator = org.flywaydb.core.Flyway.configure().dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword()).load();
+        var migrator = org.flywaydb.core.Flyway.configure().dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword()).target("3").load();
         assertThat(migrator.migrate().migrationsExecuted).isEqualTo(1);
         assertThat(upgradeJdbc.queryForObject("select id::text from catalog.airlines", String.class))
                 .isEqualTo("00000000-0000-0000-0000-000000000001");

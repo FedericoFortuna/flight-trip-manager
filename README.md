@@ -11,6 +11,8 @@ CARD 1 incorpora el catálogo local de aeropuertos, aerolíneas y ubicaciones:
 seis consultas `/api/v1`, entidades JPA separadas del dominio y migración V2.
 CARD 1.1 agrega importación explícita por lotes JSON, con identidad de origen,
 actualizaciones atómicas y protección frente a versiones antiguas.
+CARD 2 agrega viajes y tramos, referencias al catálogo, estados calculados,
+edición con control de versión y orden manual reversible.
 No hay integraciones externas activas ni carga automática de datos.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
 
@@ -50,7 +52,7 @@ Los puertos publicados están restringidos a `127.0.0.1`.
 - Swagger UI: http://localhost:8080/swagger-ui/index.html
 - OpenAPI: http://localhost:8080/v3/api-docs
 
-Swagger documenta las seis consultas y la importación del catálogo. Actuator no publica datos
+Swagger documenta el catálogo y la gestión de viajes/tramos. Actuator no publica datos
 de configuración ni detalles de conexión. `docker compose down` conserva los
 datos en el volumen; `docker compose down -v` los elimina deliberadamente.
 Cambiar credenciales de `.env` no modifica un usuario en un volumen ya creado.
@@ -98,7 +100,8 @@ no por entidades JPA ni repositorios ajenos. `bootstrap` configura y coordina.
 
 Flyway ejecuta V1 (siete esquemas funcionales) y V2 (tablas `catalog.airports`,
 `catalog.airlines` y `catalog.locations`), más V3 (identidad y fechas de origen
-para importación). `shared` no posee tablas. El historial de
+para importación) y V4 (`trips.trips` y `trips.trip_legs` con FK al catálogo).
+`shared` no posee tablas. El historial de
 Flyway vive en `public`. Las próximas migraciones usan números globales crecientes.
 Nunca modificar una migración aplicada: agregar otra.
 
@@ -162,8 +165,7 @@ Duffel, AirLabs y OpenSky se incorporarán detrás de puertos, con mocks y prueb
 que no dependan de servicios reales. No se permite scraping ni ofertas de OTAs.
 Caffeine, resiliencia y scheduler se añadirán cuando exista su primer consumidor.
 
-Próxima card: 2 — gestión de viajes y tramos. No hay jobs ni endpoints
-para gestionar viajes todavía.
+Próxima card: 3 — pasajeros. Todavía no hay reservas de vuelos, providers ni jobs.
 
 ## Catálogo local (CARD 1)
 
@@ -240,6 +242,68 @@ La importación no requiere nuevas variables de entorno ni API keys.
 Los adapters futuros pueden invocar `CatalogImport` con contratos internos;
 no hay scheduler, descarga automática ni catálogo mundial incluido.
 Ver [CARD 1.1](docs/cards/card-1.1-catalog-import-sync.md).
+
+## Viajes y tramos (CARD 2)
+
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| POST / GET | `/api/v1/trips` | Crear / listar viajes |
+| GET / PATCH / DELETE | `/api/v1/trips/{tripId}` | Consultar / editar / eliminar viaje vacío |
+| POST / GET | `/api/v1/trips/{tripId}/legs` | Agregar / listar tramos |
+| PATCH / DELETE | `/api/v1/trips/{tripId}/legs/{legId}` | Editar / eliminar tramo |
+| PATCH | `/api/v1/trips/{tripId}/legs/reorder` | Orden manual completo o retorno a automático |
+
+Ejemplo de creación de viaje:
+
+```json
+{
+  "name": "Viaje de noviembre",
+  "startDate": "2026-11-01",
+  "endDate": "2026-11-20",
+  "totalBudgetUsd": 2500.00
+}
+```
+
+Nombre y ambas fechas son obligatorios. Presupuesto USD es opcional, no negativo,
+con hasta dos decimales; no se redondea silenciosamente. Los tramos referencian
+origen y destino mediante `{"kind":"AIRPORT|LOCATION","id":"UUID-del-catálogo"}`.
+Se validan existencia y aeropuertos activos al asignar una referencia nueva.
+
+Todas las mutaciones de un viaje existente requieren su `version`: en el cuerpo
+de POST/PATCH de tramos, PATCH del viaje y reordenamiento; en query para DELETE.
+Cada mutación incrementa la versión del viaje, incluso si sólo cambia un tramo.
+Una versión desactualizada devuelve 409: volver a consultar y revisar los cambios.
+Los tramos devuelven `tripVersion`; el viaje devuelve `version`.
+
+PATCH conserva propiedades omitidas. null elimina presupuesto/override o una
+fecha/hora opcional cuando las reglas lo permiten. Acepta JSON y merge-patch JSON.
+Enviar version y al menos un campo; propiedades desconocidas o duplicadas se
+rechazan en PATCH. Ejemplo: `{"version":0,"manualStatusOverride":"CANCELLED"}`.
+
+Los tramos admiten `departureDate`/`arrivalDate` sin hora y, opcionalmente,
+`departureDateTime`/`arrivalDateTime` como instantes con offset. Se almacenan
+en UTC; la fecha asociada a un instante es su día UTC y, si se envían ambos,
+deben coincidir. Una hora desconocida queda null. Para cambiar a sólo fecha,
+limpiar explícitamente el instante. Sólo PLANNED admite salida sin fecha.
+Las fechas conocidas deben caber dentro del viaje.
+
+Orden automático: fecha, hora conocida primero, creación y UUID; fechas desconocidas
+al final. Orden manual: `{"version":2,"orderedLegIds":["UUID-1","UUID-2"]}` debe
+incluir todos los tramos una vez. Lista vacía restaura automático. Agregar un tramo
+en orden manual lo coloca al final; eliminarlo compacta posiciones.
+No existe `orderingMode`.
+
+Los estados se calculan al consultar usando Clock UTC, sin scheduler. El viaje
+expone status, derivedStatus y manualStatusOverride. Todos los tramos necesarios
+reservados y viaje futuro deriva UPCOMING. En esta card los estados de reserva
+de los tramos son declarados manualmente; se conectarán con reservas reales en
+la card de vuelos. No se infiere una reserva por tener fecha.
+
+Listados: page desde 0, size default 20 y máximo 100; viajes filtran q por nombre.
+Máximo 500 tramos por viaje para mantener acotada la edición del agregado.
+Un viaje con tramos no se elimina: primero quitarlos explícitamente. Las FK
+protegen referencias al catálogo y no hay cascadas de borrado.
+Detalles, política de estados y evidencia: [CARD 2](docs/cards/card-2-trip-management.md).
 
 ## Errores HTTP y logs
 

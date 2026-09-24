@@ -34,6 +34,9 @@ public class JpaCatalogAdapter implements CatalogStore {
     @Override public Optional<Airport> airport(String iataCode) {
         return airports.findByIataCode(iataCode).map(mapper::toDomain);
     }
+    @Override public Optional<Airport> airportById(UUID id) {
+        return airports.findById(id).map(mapper::toDomain);
+    }
     @Override public CatalogPage<Airline> airlines(CatalogQuery query, boolean active) {
         return map(airlines.search(query.q(), active, pageable(query)), mapper::toDomain);
     }

@@ -7,6 +7,7 @@ import com.flighttripmanager.catalog.application.contract.CatalogPage;
 import com.flighttripmanager.catalog.application.contract.CatalogQuery;
 
 public interface CatalogStore {
+    Optional<Airport> airportById(UUID id);
     CatalogPage<Airport> airports(CatalogQuery query, boolean active);
     Optional<Airport> airport(String iataCode);
     CatalogPage<Airline> airlines(CatalogQuery query, boolean active);

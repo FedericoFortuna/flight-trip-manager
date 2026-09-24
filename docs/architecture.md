@@ -167,10 +167,62 @@ códigos compartidos/reasignados entre identidades se resolverán cuando se cone
 un dataset concreto. La carga manual mínima documentada permite comenzar sin
 presentar datos ficticios como catálogo de producción.
 
+## ADR 005 — Agregado de viaje, fechas y concurrencia (CARD 2)
+
+Trip es dueño de sus TripLeg. Dominio Java puro, modelos JPA separados y MapStruct
+en fronteras. TripManagement es el puerto público; TripStore y CatalogPlaces son
+puertos salientes del módulo. CatalogPlacesAdapter consume únicamente CatalogLookup
+y sus contratos; se agrega airportById al puerto de catálogo, sin nuevo endpoint HTTP.
+No hay repositorios ni entidades JPA cruzados. FK explícitas garantizan existencia
+de aeropuertos/locations y restringen eliminaciones.
+
+Cada viaje requiere nombre, startDate y endDate. Un tramo puede estar sin fechas
+sólo como PLANNED. Fecha sin hora se conserva como LocalDate y no se convierte
+en medianoche. Cuando se conoce un instante, se conserva Instant UTC y su día UTC;
+ambos deben coincidir si se suministran juntos. Esta decisión inicial no modela
+una zona horaria propia del viaje. Las fechas conocidas deben caber en su intervalo.
+Los importes usan BigDecimal/numeric(19,2); se rechaza precisión monetaria adicional.
+
+Orden manual completo: todas las posiciones 0..n-1 o todas null. No hay orderingMode.
+Reordenar exige todos los IDs exactamente una vez; lista vacía restaura automático.
+El orden automático compara fecha, hora conocida antes de desconocida, createdAt
+y UUID. Sin fecha queda al final. El agregado limita el itinerario a 500 tramos;
+los endpoints de listas son paginados y los viajes se leen por página con una
+consulta de tramos agrupada, evitando una consulta por viaje.
+
+Las mutaciones bloquean la fila del viaje, comprueban la versión esperada y avanzan
+una revisión explícita del agregado. El bloqueo y la comparación se realizan en
+una transacción; así una edición de tramo también invalida versiones del viaje.
+No se depende de @Version JPA: la revisión es parte del contrato y se controla
+bajo el lock del padre. Las lecturas usan REPEATABLE_READ para ensamblar viaje
+y tramos desde una instantánea coherente. Las escrituras usan READ_COMMITTED.
+
+La unicidad (trip_id, manual_order) es diferible para permitir permutaciones
+atómicas. La consistencia global de posiciones y límites de fechas entre tablas
+se valida en el agregado bajo lock; CHECK/UNIQUE/FK refuerzan invariantes de filas.
+DELETE de un viaje con tramos se rechaza; no se crean cascadas. Futuras referencias
+de vuelos deben seguir usando FK RESTRICT y comportamiento explícito.
+
+Estado calculado al leer, usando Clock UTC, sin persistir un estado derivado que
+pueda quedar obsoleto por el paso del tiempo. PLANNING si no hay tramos; CANCELLED
+si todos están cancelados; COMPLETED si todos los no cancelados terminaron;
+IN_PROGRESS si alguno está en progreso; PARTIALLY_BOOKED si parte está cubierta.
+Si todos los no cancelados están cubiertos: UPCOMING antes del inicio del viaje,
+IN_PROGRESS a partir del inicio. Sin cobertura, PLANNING.
+
+BOOKED/UPCOMING declarados en un tramo derivan UPCOMING antes de salida e
+IN_PROGRESS desde salida. Con llegada exacta, COMPLETED al alcanzar ese instante;
+con sólo fecha de llegada, al terminar ese día. Sin llegada no se inventa fin.
+Otros estados explícitos del tramo se preservan. El override del viaje tiene
+prioridad sobre su estado efectivo, pero no cambia ni cancela sus tramos.
+BOOKED del viaje sigue disponible como override; no sustituye UPCOMING derivado.
+
+En CARD 2 la cobertura de reserva es declarada en los tramos. La consistencia con
+pasajeros y reservas reales pertenece a las cards siguientes. No hay dependencia
+trips→flights ni modelos vacíos de reserva para anticiparla.
+
 ## Decisiones funcionales por cerrar antes de sus cards
 
-- Fecha conocida sin hora y orden manual completo/automático.
-- Precedencia de estados y significado derivado de BOOKED frente a UPCOMING.
 - Cobertura de reserva por pasajeros y trayectos.
 - Protección de conexión explícita, sin inferir garantía a partir del PNR.
 - Precio compartido sin Booking ni doble contabilización.

@@ -64,7 +64,7 @@ class BootstrapIT {
         flyway.validate();
         assertThat(flyway.migrate().migrationsExecuted).isZero();
         assertThat(jdbc.queryForObject(
-                "select count(*) from public.flyway_schema_history where success", Long.class)).isEqualTo(3L);
+                "select count(*) from public.flyway_schema_history where success", Long.class)).isEqualTo(4L);
     }
 
     @Test
