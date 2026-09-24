@@ -9,7 +9,9 @@ CARD 0 implementa la infraestructura de arranque y CARD 0.1 agrega errores HTTP
 uniformes y observabilidad. CARD 0.2 exige límites arquitectónicos y cobertura mínima.
 CARD 1 incorpora el catálogo local de aeropuertos, aerolíneas y ubicaciones:
 seis consultas `/api/v1`, entidades JPA separadas del dominio y migración V2.
-No hay integraciones externas activas ni carga inicial de datos.
+CARD 1.1 agrega importación explícita por lotes JSON, con identidad de origen,
+actualizaciones atómicas y protección frente a versiones antiguas.
+No hay integraciones externas activas ni carga automática de datos.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
 
 Validación de CARD 0 (2026-09-23): `clean verify` correcto (1 test unitario y 5 de
@@ -48,7 +50,7 @@ Los puertos publicados están restringidos a `127.0.0.1`.
 - Swagger UI: http://localhost:8080/swagger-ui/index.html
 - OpenAPI: http://localhost:8080/v3/api-docs
 
-Swagger documenta las seis consultas del catálogo. Actuator no publica datos
+Swagger documenta las seis consultas y la importación del catálogo. Actuator no publica datos
 de configuración ni detalles de conexión. `docker compose down` conserva los
 datos en el volumen; `docker compose down -v` los elimina deliberadamente.
 Cambiar credenciales de `.env` no modifica un usuario en un volumen ya creado.
@@ -95,7 +97,8 @@ Cada módulo funcional incorporará `domain`, `application`, `infrastructure` y
 no por entidades JPA ni repositorios ajenos. `bootstrap` configura y coordina.
 
 Flyway ejecuta V1 (siete esquemas funcionales) y V2 (tablas `catalog.airports`,
-`catalog.airlines` y `catalog.locations`). `shared` no posee tablas. El historial de
+`catalog.airlines` y `catalog.locations`), más V3 (identidad y fechas de origen
+para importación). `shared` no posee tablas. El historial de
 Flyway vive en `public`. Las próximas migraciones usan números globales crecientes.
 Nunca modificar una migración aplicada: agregar otra.
 
@@ -159,7 +162,7 @@ Duffel, AirLabs y OpenSky se incorporarán detrás de puertos, con mocks y prueb
 que no dependan de servicios reales. No se permite scraping ni ofertas de OTAs.
 Caffeine, resiliencia y scheduler se añadirán cuando exista su primer consumidor.
 
-Próxima card: 1.1 — carga/sincronización del catálogo. No hay jobs ni endpoints
+Próxima card: 2 — gestión de viajes y tramos. No hay jobs ni endpoints
 para gestionar viajes todavía.
 
 ## Catálogo local (CARD 1)
@@ -189,11 +192,54 @@ Ejemplos: `GET /api/v1/airports?q=buenos&size=10` y
 Recurso inexistente: 404 con `AIRPORT_NOT_FOUND`, `AIRLINE_NOT_FOUND` o
 `LOCATION_NOT_FOUND`; parámetros inválidos: 400 con el contrato de error común.
 
-La base nueva queda vacía deliberadamente: no hay semillas ficticias de producción,
-POST, PUT, DELETE ni sincronización implícita al consultar. Las fixtures viven
+La base nueva queda vacía hasta una importación explícita: no hay semillas ficticias
+de producción ni sincronización implícita al consultar. Las fixtures viven
 en `src/test/resources` y sólo se cargan en PostgreSQL efímero de Testcontainers.
 Los timestamps desconocidos y coordenadas desconocidas se conservan como null.
 Decisiones, migración y evidencia: [CARD 1](docs/cards/card-1-local-catalog.md).
+
+## Importación y sincronización explícita (CARD 1.1)
+
+`POST /api/v1/catalog/imports` acepta JSON con `source`, `observedAt` y listas
+`airports`, `airlines`, `locations`. Las listas pueden omitirse, pero el lote
+debe contener entre 1 y 500 registros en total. Cada registro requiere
+`externalId` estable dentro de su origen y tipo.
+
+La identidad es `tipo + source + externalId`; el servidor asigna UUID al crear
+y lo conserva al actualizar. source se normaliza a minúsculas; externalId conserva
+mayúsculas y se recortan espacios. IATA/ICAO/país se normalizan a mayúsculas.
+Los campos desconocidos se rechazan para detectar errores de escritura.
+
+observedAt representa la fecha real de observación/revisión de los datos:
+no puede ser futura ni anterior a 1970 y admite hasta microsegundos.
+lastSyncedAt lo asigna el reloj UTC del servidor. Repetir una versión idéntica
+devuelve UNCHANGED sin modificar UUID ni timestamps. Una versión más nueva se
+actualiza; una anterior o una repetida con contenido diferente se rechaza.
+
+El lote es una única transacción: cualquier conflicto revierte todos sus cambios.
+Una importación concurrente devuelve 409 CATALOG_IMPORT_BUSY; puede reintentarse
+con el mismo lote. No se eliminan ni desactivan registros omitidos.
+Los registros suministrados son completos: null u omisión de ICAO/coordenadas
+borra esos datos opcionales; `active` es obligatorio en aeropuertos/aerolíneas.
+Los códigos y nombres que ya pertenecen a otro origen no se fusionan automáticamente.
+
+Respuesta 200: contadores `created`, `updated`, `unchanged` e `items` con tipo,
+externalId, UUID y resultado. Errores: 400 para entrada inválida; 409 para
+identidad en conflicto, versión antigua/diferente o importación concurrente.
+
+Para comenzar hay un [archivo mínimo curado y sus fuentes](examples/catalog/README.md).
+Desde la raíz del proyecto, con el backend levantado:
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'http://localhost:8080/api/v1/catalog/imports' `
+  -ContentType 'application/json; charset=utf-8' `
+  -InFile './examples/catalog/argentina-starter.json'
+```
+
+La importación no requiere nuevas variables de entorno ni API keys.
+Los adapters futuros pueden invocar `CatalogImport` con contratos internos;
+no hay scheduler, descarga automática ni catálogo mundial incluido.
+Ver [CARD 1.1](docs/cards/card-1.1-catalog-import-sync.md).
 
 ## Errores HTTP y logs
 

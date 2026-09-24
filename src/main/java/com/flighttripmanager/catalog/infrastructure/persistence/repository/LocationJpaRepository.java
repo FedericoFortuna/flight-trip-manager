@@ -10,6 +10,9 @@ import org.springframework.data.repository.query.Param;
 import com.flighttripmanager.catalog.infrastructure.persistence.entity.LocationJpaEntity;
 
 public interface LocationJpaRepository extends Repository<LocationJpaEntity, UUID> {
+    java.util.Optional<LocationJpaEntity> findBySourceAndExternalId(String source, String externalId);
+    LocationJpaEntity saveAndFlush(LocationJpaEntity entity);
+
     java.util.Optional<LocationJpaEntity> findById(UUID id);
 
     @Query("""

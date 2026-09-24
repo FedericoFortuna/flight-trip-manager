@@ -10,8 +10,18 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "airports", schema = "catalog")
 @Getter
-@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
+@lombok.Setter
+@NoArgsConstructor
 public class AirportJpaEntity {
+    @Column(length = 64)
+    private String source;
+
+    @Column(name = "external_id", length = 100)
+    private String externalId;
+
+    @Column(name = "source_observed_at")
+    private java.time.Instant sourceObservedAt;
+
     @Id
     private UUID id;
 

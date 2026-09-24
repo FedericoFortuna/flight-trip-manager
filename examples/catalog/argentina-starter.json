@@ -1,0 +1,37 @@
+{
+  "source": "manual-curated-ar",
+  "observedAt": "2026-09-24T00:54:07Z",
+  "airports": [
+    {
+      "externalId": "airport-ezeiza-ministro-pistarini",
+      "iataCode": "EZE",
+      "icaoCode": "SAEZ",
+      "name": "Aeropuerto Internacional Ministro Pistarini",
+      "city": "Ezeiza",
+      "country": "AR",
+      "latitude": null,
+      "longitude": null,
+      "timezone": "America/Argentina/Buenos_Aires",
+      "active": true
+    }
+  ],
+  "airlines": [
+    {
+      "externalId": "airline-aerolineas-argentinas",
+      "iataCode": "AR",
+      "icaoCode": "ARG",
+      "name": "Aerolíneas Argentinas",
+      "country": "AR",
+      "active": true
+    }
+  ],
+  "locations": [
+    {
+      "externalId": "city-ezeiza-buenos-aires-ar",
+      "type": "CITY",
+      "name": "Ezeiza",
+      "city": "Ezeiza",
+      "country": "AR"
+    }
+  ]
+}

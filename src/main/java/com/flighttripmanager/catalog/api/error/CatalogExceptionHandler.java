@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.flighttripmanager.catalog.application.contract.CatalogNotFoundException;
+import com.flighttripmanager.catalog.application.contract.CatalogImportException;
 import com.flighttripmanager.shared.api.error.ApiError;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -17,6 +18,16 @@ import com.flighttripmanager.shared.api.error.ApiError;
 public class CatalogExceptionHandler {
     private final Clock clock;
     public CatalogExceptionHandler(Clock clock) { this.clock = clock; }
+
+    @ExceptionHandler(CatalogImportException.class)
+    public ResponseEntity<ApiError> importFailure(CatalogImportException exception) {
+        boolean invalid = exception.reason() == CatalogImportException.Reason.INVALID_BATCH;
+        String code = "CATALOG_" + exception.reason().name();
+        MDC.put("errorCode", code);
+        return ResponseEntity.status(invalid ? 400 : 409).body(new ApiError(code,
+                invalid ? "Invalid catalog import batch" : "Catalog import could not be applied",
+                Map.of(exception.field(), invalid ? "Invalid value" : "Conflict"), Instant.now(clock)));
+    }
 
     @ExceptionHandler(CatalogNotFoundException.class)
     public ResponseEntity<ApiError> notFound(CatalogNotFoundException exception) {

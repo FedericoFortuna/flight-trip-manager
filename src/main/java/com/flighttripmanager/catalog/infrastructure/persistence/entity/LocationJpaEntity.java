@@ -9,8 +9,21 @@ import lombok.NoArgsConstructor;
 @Entity
 @Table(name = "locations", schema = "catalog")
 @Getter
-@NoArgsConstructor(access = lombok.AccessLevel.PROTECTED)
+@lombok.Setter
+@NoArgsConstructor
 public class LocationJpaEntity {
+    @Column(length = 64)
+    private String source;
+
+    @Column(name = "external_id", length = 100)
+    private String externalId;
+
+    @Column(name = "source_observed_at")
+    private java.time.Instant sourceObservedAt;
+
+    @Column(name = "last_synced_at")
+    private java.time.Instant lastSyncedAt;
+
     @Id
     private UUID id;
 

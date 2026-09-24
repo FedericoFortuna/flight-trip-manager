@@ -54,7 +54,8 @@ Una base PostgreSQL con esquemas funcionales y secuencia Flyway global.
 dominio en sus respectivas cards; no habrá relaciones JPA entre módulos.
 Las FK entre esquemas podrán reforzar integridad y se documentarán al introducirlas.
 
-V1 crea los esquemas; V2 agrega las tres tablas del catálogo local.
+V1 crea los esquemas; V2 agrega las tres tablas del catálogo local; V3 agrega
+identidad de origen y fechas de importación sin reemplazar UUID existentes.
 `ddl-auto=validate` comprueba sus entidades JPA al arrancar.
 
 ## Límites de CARD 0
@@ -127,6 +128,44 @@ Las tablas vacías son un estado válido. Carga, normalización de proveedores,
 identidad externa y sincronización quedan en CARD 1.1. Antes de importar,
 reevaluar códigos compartidos/reasignados y locations homónimas: la identidad
 natural mínima actual no resuelve desambiguación geográfica mundial.
+
+## ADR 004 — Importación atómica con identidad externa (CARD 1.1)
+
+Un lote explícito invoca el puerto público CatalogImport. El caso de uso valida
+todos los registros y ejecuta una transacción sobre CatalogImportStore. La entrada
+HTTP y persistencia se mapean con MapStruct; no se agregan dependencias técnicas
+a contratos ni dominio. Un adapter de proveedor futuro normalizará sus datos
+hacia CatalogImportBatch, sin exponer DTOs externos.
+
+Cada tipo mantiene una clave única source/externalId y una versión source_observed_at.
+El UUID pertenece al catálogo y se conserva al cambiar los atributos, incluso IATA.
+No se asume que compartir código o nombre implica compartir identidad entre
+orígenes. Los registros V2 sin origen quedan intactos y los conflictos requieren
+reconciliación explícita; esta card no implementa adopción ni fusión automática.
+
+El cliente declara observedAt, el servidor asigna lastSyncedAt. Fechas anteriores
+son rechazadas; una fecha idéntica exige contenido normalizado idéntico. Una fecha
+más nueva actualiza también metadatos aunque los atributos permanezcan iguales.
+Las fechas se limitan a microsegundos para evitar divergencias de precisión con
+PostgreSQL. Las coordenadas se normalizan a seis decimales sin redondeo silencioso.
+
+Un advisory lock transaccional PostgreSQL serializa las importaciones, incluso
+entre instancias. El intento es no bloqueante: si está ocupado se devuelve 409.
+Las restricciones UNIQUE/CHECK siguen protegiendo integridad. El lock no coordina
+escrituras SQL manuales; todas las escrituras de aplicación deben pasar por el puerto.
+Guardar cada registro con flush permite detectar conflictos antes del commit y
+revertir el lote completo con un error seguro.
+
+Los lotes tienen 1..500 registros; se procesa el catálogo local sin infraestructura
+de jobs, cachés, colas ni consumo de cuota externa. El límite es de registros
+lógicos, no de bytes HTTP. El endpoint conserva el alcance local sin autenticación
+del MVP. Una futura publicación requiere límites de transporte y control de acceso.
+
+Las locations homónimas conservan la restricción natural de CARD 1; ahora se
+rechazan como conflicto, en vez de fusionarse. La desambiguación geográfica y los
+códigos compartidos/reasignados entre identidades se resolverán cuando se conecte
+un dataset concreto. La carga manual mínima documentada permite comenzar sin
+presentar datos ficticios como catálogo de producción.
 
 ## Decisiones funcionales por cerrar antes de sus cards
 
