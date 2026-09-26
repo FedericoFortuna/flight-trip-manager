@@ -22,8 +22,10 @@ public class TripService implements TripManagement {
     private final CatalogPlaces places;
     private final TripMapper mapper;
     private final Clock clock;
-    public TripService(TripStore store, CatalogPlaces places, TripMapper mapper, Clock clock) {
+    private final PassengerStore passengers;
+    public TripService(TripStore store, CatalogPlaces places, TripMapper mapper, Clock clock, PassengerStore passengers) {
         this.store = store; this.places = places; this.mapper = mapper; this.clock = clock;
+        this.passengers = passengers;
     }
     @Override @Transactional
     public TripView create(CreateTrip command) {
@@ -59,6 +61,7 @@ public class TripService implements TripManagement {
     public void delete(UUID id, long version) {
         Trip trip = edit(id, version);
         if (!trip.legs().isEmpty()) throw new TripsException(TRIP_NOT_EMPTY, "legs");
+        if (passengers.exists(id)) throw new TripsException(TRIP_NOT_EMPTY, "passengers");
         store.delete(id);
     }
     @Override @Transactional

@@ -13,6 +13,8 @@ CARD 1.1 agrega importación explícita por lotes JSON, con identidad de origen,
 actualizaciones atómicas y protección frente a versiones antiguas.
 CARD 2 agrega viajes y tramos, referencias al catálogo, estados calculados,
 edición con control de versión y orden manual reversible.
+CARD 3 incorpora pasajeros por viaje, listado paginado y edición parcial de nombres
+y notas, integrada con la versión del viaje.
 No hay integraciones externas activas ni carga automática de datos.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
 
@@ -100,7 +102,8 @@ no por entidades JPA ni repositorios ajenos. `bootstrap` configura y coordina.
 
 Flyway ejecuta V1 (siete esquemas funcionales) y V2 (tablas `catalog.airports`,
 `catalog.airlines` y `catalog.locations`), más V3 (identidad y fechas de origen
-para importación) y V4 (`trips.trips` y `trips.trip_legs` con FK al catálogo).
+para importación), V4 (`trips.trips` y `trips.trip_legs` con FK al catálogo)
+y V5 (`trips.passengers`, con FK restrictiva al viaje).
 `shared` no posee tablas. El historial de
 Flyway vive en `public`. Las próximas migraciones usan números globales crecientes.
 Nunca modificar una migración aplicada: agregar otra.
@@ -165,7 +168,7 @@ Duffel, AirLabs y OpenSky se incorporarán detrás de puertos, con mocks y prueb
 que no dependan de servicios reales. No se permite scraping ni ofertas de OTAs.
 Caffeine, resiliencia y scheduler se añadirán cuando exista su primer consumidor.
 
-Próxima card: 3 — pasajeros. Todavía no hay reservas de vuelos, providers ni jobs.
+Próxima card: 4 — vuelos y asociación con pasajeros. Todavía no hay reservas de vuelos, providers ni jobs.
 
 ## Catálogo local (CARD 1)
 
@@ -301,9 +304,53 @@ la card de vuelos. No se infiere una reserva por tener fecha.
 
 Listados: page desde 0, size default 20 y máximo 100; viajes filtran q por nombre.
 Máximo 500 tramos por viaje para mantener acotada la edición del agregado.
-Un viaje con tramos no se elimina: primero quitarlos explícitamente. Las FK
+Un viaje con tramos o pasajeros no se elimina: primero quitarlos explícitamente. Las FK
 protegen referencias al catálogo y no hay cascadas de borrado.
 Detalles, política de estados y evidencia: [CARD 2](docs/cards/card-2-trip-management.md).
+
+## Pasajeros por viaje
+
+Los pasajeros pertenecen al módulo trips y se identifican por UUID, no por nombre.
+Se permiten homónimos. Nombre y apellido son obligatorios, se recortan espacios
+externos y admiten hasta 100 caracteres cada uno. Las notas son opcionales, de hasta
+2000 caracteres; conservan saltos de línea y tabulaciones. No hay campos de DNI,
+pasaporte ni documentación: evitar incluir esos datos en las notas.
+
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| POST | `/api/v1/trips/{tripId}/passengers` | Crear pasajero |
+| GET | `/api/v1/trips/{tripId}/passengers` | Listar con page y size |
+| PATCH | `/api/v1/trips/{tripId}/passengers/{passengerId}` | Editar campos presentes |
+| DELETE | `/api/v1/trips/{tripId}/passengers/{passengerId}?version=1` | Eliminar explícitamente |
+
+Ejemplo de alta para un viaje con versión 0:
+
+```json
+{
+  "version": 0,
+  "firstName": "María",
+  "lastName": "García",
+  "notes": "Preferencia de ventanilla"
+}
+```
+
+POST devuelve 201 con el pasajero y tripVersion actualizado. PATCH requiere version
+y al menos un campo modificable; omitir conserva el valor y notes:null lo borra.
+Nombre y apellido no admiten null. No se puede cambiar tripId ni id mediante PATCH.
+Se rechazan campos desconocidos, claves duplicadas y tipos incorrectos.
+
+Las mutaciones requieren la versión actual del viaje, también después de editar
+sus tramos, y la incrementan una vez. Una versión obsoleta responde 409. DELETE
+devuelve 204; consultar el viaje para obtener su nueva versión.
+
+GET ordena por creación y UUID ascendente; page empieza en 0, size por defecto 20
+y máximo 100. Viaje inexistente devuelve 404; un pasajero de otro viaje tampoco
+puede editarse o eliminarse mediante una ruta ajena. Un listado vacío devuelve
+items vacío: la versión sigue disponible en GET del viaje.
+
+No se borra un viaje con pasajeros. Las FK restringen eliminaciones y no hay
+cascadas. La asociación de pasajeros con segmentos de vuelo se agrega en CARD 4.
+Decisiones y pruebas: [CARD 3](docs/cards/card-3-passenger-management.md).
 
 ## Errores HTTP y logs
 

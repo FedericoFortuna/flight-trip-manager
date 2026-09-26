@@ -17,7 +17,7 @@ class TripServiceTest {
     private final TripStore store = mock(TripStore.class);
     private final CatalogPlaces places = mock(CatalogPlaces.class);
     private final TripService service = new TripService(store, places, Mappers.getMapper(TripMapper.class),
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            Clock.fixed(NOW, ZoneOffset.UTC), mock(PassengerStore.class));
     private final Trip trip = new Trip(UUID.randomUUID(), "Trip", LocalDate.parse("2026-06-01"),
             LocalDate.parse("2026-06-10"), null, null, 5, NOW, NOW, List.of());
 

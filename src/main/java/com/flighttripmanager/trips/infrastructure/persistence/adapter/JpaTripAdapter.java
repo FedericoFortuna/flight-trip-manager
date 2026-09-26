@@ -36,7 +36,7 @@ public class JpaTripAdapter implements TripStore {
     }
     @Override public void save(Trip trip) {
         try {
-            trips.saveAndFlush(mapper.toEntity(trip));
+            saveHeader(trip);
             Set<UUID> keep = trip.legs().stream().map(leg -> leg.id()).collect(Collectors.toSet());
             legs.deleteAll(legs.findByTripId(trip.id()).stream().filter(leg -> !keep.contains(leg.getId())).toList());
             legs.saveAllAndFlush(trip.legs().stream().map(mapper::toEntity).toList());
@@ -46,6 +46,10 @@ public class JpaTripAdapter implements TripStore {
     }
     @Override public void delete(UUID id) {
         try { trips.deleteById(id); trips.flush(); }
+        catch (DataIntegrityViolationException error) { throw new TripsException(TripsException.Reason.CONFLICT, "trip"); }
+    }
+    @Override public void saveHeader(Trip trip) {
+        try { trips.saveAndFlush(mapper.toEntity(trip)); }
         catch (DataIntegrityViolationException error) { throw new TripsException(TripsException.Reason.CONFLICT, "trip"); }
     }
 }

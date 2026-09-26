@@ -221,6 +221,38 @@ En CARD 2 la cobertura de reserva es declarada en los tramos. La consistencia co
 pasajeros y reservas reales pertenece a las cards siguientes. No hay dependencia
 trips→flights ni modelos vacíos de reserva para anticiparla.
 
+## ADR 006 — Pasajeros pertenecientes al viaje (CARD 3)
+
+Passenger pertenece a trips, junto con Trip y TripLeg. Tiene identidad UUID,
+tripId inmutable, nombre, apellido y notas opcionales. No hay catálogo global de
+personas, documentos personales ni unicidad por nombre. Dominio y persistencia
+siguen separados, con MapStruct en sus fronteras y PassengerManagement como puerto
+público de aplicación. La asociación con vuelos se implementará en CARD 4.
+
+Los pasajeros se consultan mediante un repositorio paginado separado, sin cargar
+la colección entera en Trip ni relaciones JPA eager. Conservan la misma frontera
+de consistencia del viaje: cada mutación toma el bloqueo del padre, verifica la
+versión y avanza su revisión en una única transacción. saveHeader permite actualizar
+esa revisión sin reescribir tramos. Las lecturas usan REPEATABLE_READ para que la
+versión devuelta y los pasajeros correspondan a la misma instantánea.
+
+La fila padre también coordina la carrera entre crear pasajero y eliminar viaje.
+TripService rechaza explícitamente viajes con pasajeros, reforzado por FK RESTRICT
+en V5. No se borran pasajeros en cascada. No hay referencias de vuelos todavía;
+su futura eliminación deberá conservar esa política explícita.
+
+La API permite sólo nombre, apellido y notas, además de la versión esperada.
+PATCH diferencia omisión de null, rechaza claves desconocidas/duplicadas y conserva
+campos omitidos. El lector JSON compartido del módulo también rechaza contenido
+posterior al objeto. Las validaciones y errores no exponen valores personales.
+Las notas son texto libre: la ausencia de campos de documentación no detecta ni
+elimina automáticamente datos sensibles que un usuario escriba en ellas.
+
+No se agregan dependencias, módulos, cachés, eventos ni infraestructura.
+Las operaciones aún leen los tramos acotados del viaje para obtener su estado;
+si ese costo se vuelve significativo se podrá agregar una proyección de revisión
+del padre, manteniendo el bloqueo y sin relajar su consistencia.
+
 ## Decisiones funcionales por cerrar antes de sus cards
 
 - Cobertura de reserva por pasajeros y trayectos.

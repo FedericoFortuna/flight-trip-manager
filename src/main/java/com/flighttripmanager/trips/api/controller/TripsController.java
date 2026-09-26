@@ -58,7 +58,7 @@ public class TripsController {
         return mapper.response(trips.patch(tripId, patches.trip(body)));
     }
     @DeleteMapping("/{tripId}")
-    @Operation(summary = "Delete an empty trip", description = "Trips containing legs are rejected; remove their legs explicitly first.")
+    @Operation(summary = "Delete an empty trip", description = "Trips containing legs or passengers are rejected; remove them explicitly first.")
     @ApiResponse(responseCode = "204", description = "Deleted")
     public ResponseEntity<Void> delete(@PathVariable UUID tripId, @RequestParam @Min(0) long version) {
         trips.delete(tripId, version); return ResponseEntity.noContent().build();

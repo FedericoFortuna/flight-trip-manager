@@ -18,12 +18,12 @@ public class TripsExceptionHandler {
     @ExceptionHandler(TripsException.class)
     public ResponseEntity<ApiError> handle(TripsException error) {
         int status = switch (error.reason()) {
-            case TRIP_NOT_FOUND, LEG_NOT_FOUND -> 404;
+            case TRIP_NOT_FOUND, LEG_NOT_FOUND, PASSENGER_NOT_FOUND -> 404;
             case INVALID_REQUEST, INVALID_REFERENCE -> 400;
             default -> 409;
         };
         String code = switch (error.reason()) {
-            case TRIP_NOT_FOUND, LEG_NOT_FOUND -> error.reason().name();
+            case TRIP_NOT_FOUND, LEG_NOT_FOUND, PASSENGER_NOT_FOUND -> error.reason().name();
             default -> "TRIP_" + error.reason().name();
         };
         MDC.put("errorCode", code);

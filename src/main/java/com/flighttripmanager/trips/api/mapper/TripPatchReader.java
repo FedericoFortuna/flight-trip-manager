@@ -16,6 +16,7 @@ public class TripPatchReader {
     public TripPatchReader(ObjectMapper json) {
         this.json = json.copy().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
                 .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                 .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
     }
     public PatchTrip trip(String body) {
@@ -31,6 +32,16 @@ public class TripPatchReader {
                 change(node, "transportType", TransportTypeValue.class), change(node, "departureDate", LocalDate.class),
                 change(node, "departureDateTime", Instant.class), change(node, "arrivalDate", LocalDate.class),
                 change(node, "arrivalDateTime", Instant.class), change(node, "status", LegStatusValue.class));
+    }
+    public PatchPassenger passenger(String body) {
+        JsonNode node = object(body, Set.of("version", "firstName", "lastName", "notes"));
+        return new PatchPassenger(version(node), change(node, "firstName", String.class),
+                change(node, "lastName", String.class), change(node, "notes", String.class));
+    }
+    public com.flighttripmanager.trips.api.request.CreatePassengerRequest createPassenger(String body) {
+        PatchPassenger input = passenger(body);
+        return new com.flighttripmanager.trips.api.request.CreatePassengerRequest(input.version(),
+                input.firstName().value(), input.lastName().value(), input.notes().value());
     }
     private JsonNode object(String body, Set<String> fields) {
         try {
