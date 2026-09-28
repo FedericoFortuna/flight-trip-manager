@@ -26,6 +26,9 @@ public class JpaPassengerAdapter implements PassengerStore {
                 page.getNumber(), page.getSize(), page.getTotalElements());
     }
     @Override public boolean exists(UUID tripId) { return repository.existsByTripId(tripId); }
+    @Override public boolean containsAll(UUID tripId, List<UUID> ids) {
+        return ids.isEmpty() || repository.countByTripIdAndIdIn(tripId, ids) == new HashSet<>(ids).size();
+    }
     @Override public void save(Passenger passenger) {
         try { repository.saveAndFlush(mapper.toEntity(passenger)); }
         catch (DataIntegrityViolationException error) { throw conflict(); }

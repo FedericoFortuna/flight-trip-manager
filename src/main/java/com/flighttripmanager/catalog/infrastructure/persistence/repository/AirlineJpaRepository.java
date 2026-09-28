@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import com.flighttripmanager.catalog.infrastructure.persistence.entity.AirlineJpaEntity;
 
 public interface AirlineJpaRepository extends Repository<AirlineJpaEntity, UUID> {
+    Optional<AirlineJpaEntity> findById(UUID id);
     java.util.Optional<AirlineJpaEntity> findBySourceAndExternalId(String source, String externalId);
     AirlineJpaEntity saveAndFlush(AirlineJpaEntity entity);
 

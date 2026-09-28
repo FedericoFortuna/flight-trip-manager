@@ -253,6 +253,59 @@ Las operaciones aún leen los tramos acotados del viaje para obtener su estado;
 si ese costo se vuelve significativo se podrá agregar una proyección de revisión
 del padre, manteniendo el bloqueo y sin relajar su consistencia.
 
+## ADR 007 — Segmentos manuales, referencias y cambios (CARD 4)
+
+flights mantiene su propio dominio, persistencia, contratos y API. Consume
+TripFlightAccess y CatalogLookup mediante adapters y puertos salientes propios.
+No importa entidades ni repositorios de trips/catalog. Se agrega airlineById al
+contrato de catálogo; las FK usan identidades estables aunque cambien los códigos.
+
+TripFlightAccess coordina el bloqueo del padre y valida pertenencia de pasajeros
+en una consulta agrupada. Su transacción es MANDATORY: participa en la de flights
+y no puede confirmar parcialmente una revisión. Todas las mutaciones siguen
+usando la versión del viaje. Para editar/eliminar un vuelo se consulta primero
+una proyección de su padre, se bloquea el viaje y recién entonces se carga la
+entidad; evita reutilizar una entidad JPA obsoleta cargada antes del bloqueo.
+Lecturas de vuelo, página y revisión comparten REPEATABLE_READ.
+
+V6 usa FK compuestas para enlazar vuelo con tramo del mismo viaje y tipo FLIGHT,
+y asignaciones con vuelo y pasajero del mismo viaje. RESTRICT protege altas,
+bajas y cambios de tipo incluso fuera de Java. Son constraints entre schemas,
+sin asociaciones JPA ni acceso cruzado a repositorios.
+
+La relación de pasajeros admite asiento, equipaje, ticket e importe propios.
+Los campos de booking a nivel segmento no se copian automáticamente a cada pasajero.
+Hasta 100 asignaciones por vuelo; cada listado hace una consulta agrupada para
+cargar las asignaciones de la página, evitando N+1. Modificar un vuelo reemplaza
+explícitamente sus asignaciones en la misma transacción.
+
+El PNR no es clave única y no se crea Booking. Importe de segmento, total de ticket
+y desglose de pasajero se preservan por separado, con moneda original y conversión
+USD nullable. El usuario confirmó no repartir ni sumar automáticamente estos importes;
+su consolidación pertenece a presupuesto. No se infiere protección de conexión del PNR.
+
+flightDate representa el día local del aeropuerto de salida, mientras que Trip
+conserva su intervalo de planificación por fecha y los instantes se almacenan en UTC.
+En esta card no se fuerza que la fecha local de cada segmento coincida con la
+fecha UTC del tramo ni se valida completitud de rutas por pasajero. Las revisiones
+de fechas del viaje tampoco modifican automáticamente los vuelos.
+
+Se preserva el horario programado conocido al registrar. Horarios estimados y
+reales son valores actuales; historial contiene número, estado, terminales y puertas.
+Las correcciones manuales son explícitas y auditadas sin una matriz de proveedor.
+No se activa polling ni se aplica una regla de “último dato gana” entre providers.
+
+POST admite una clave UUID opcional de idempotencia que actúa como identidad
+del vuelo. Bajo bloqueo del padre se compara el contenido normalizado y se permite
+replay sin nueva revisión. Altas usan EntityManager.persist, no merge: la PK resuelve
+colisiones concurrentes de una clave entre viajes sin sobrescribir datos. Borrar
+un vuelo borra explícitamente su historial y enlaces; la idempotencia no sobrevive
+al borrado. No se agregan tombstones ni infraestructura de deduplicación general.
+
+PATCH reemplaza grupos proporcionados y preserva los omitidos. Sólo acepta JSON,
+sin anunciar semántica JSON Merge Patch recursiva. Requiere status cuando se
+reemplaza operation para impedir un cambio de estado implícito al editar una puerta.
+
 ## Decisiones funcionales por cerrar antes de sus cards
 
 - Cobertura de reserva por pasajeros y trayectos.

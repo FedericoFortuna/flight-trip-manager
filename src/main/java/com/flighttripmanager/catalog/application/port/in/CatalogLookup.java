@@ -5,6 +5,7 @@ import com.flighttripmanager.catalog.application.contract.*;
 
 public interface CatalogLookup {
     AirportView airportById(UUID id);
+    AirlineView airlineById(UUID id);
     CatalogPage<AirportView> airports(CatalogQuery query, boolean active);
     AirportView airport(String iataCode);
     CatalogPage<AirlineView> airlines(CatalogQuery query, boolean active);

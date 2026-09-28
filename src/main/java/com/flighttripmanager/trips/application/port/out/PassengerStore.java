@@ -6,6 +6,7 @@ public interface PassengerStore {
     Optional<Passenger> find(UUID tripId, UUID passengerId);
     TripsPage<Passenger> list(UUID tripId, TripsQuery query);
     boolean exists(UUID tripId);
+    boolean containsAll(UUID tripId, List<UUID> ids);
     void save(Passenger passenger);
     void delete(UUID tripId, UUID passengerId);
 }

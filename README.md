@@ -15,6 +15,8 @@ CARD 2 agrega viajes y tramos, referencias al catálogo, estados calculados,
 edición con control de versión y orden manual reversible.
 CARD 3 incorpora pasajeros por viaje, listado paginado y edición parcial de nombres
 y notas, integrada con la versión del viaje.
+CARD 4 agrega segmentos de vuelo manuales, pasajeros por segmento, importes conocidos,
+historial de número/estado/terminal/puerta e idempotencia opcional de altas.
 No hay integraciones externas activas ni carga automática de datos.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
 
@@ -103,7 +105,8 @@ no por entidades JPA ni repositorios ajenos. `bootstrap` configura y coordina.
 Flyway ejecuta V1 (siete esquemas funcionales) y V2 (tablas `catalog.airports`,
 `catalog.airlines` y `catalog.locations`), más V3 (identidad y fechas de origen
 para importación), V4 (`trips.trips` y `trips.trip_legs` con FK al catálogo)
-y V5 (`trips.passengers`, con FK restrictiva al viaje).
+y V5 (`trips.passengers`, con FK restrictiva al viaje). V6 agrega segmentos,
+asignaciones de pasajeros e historial en el schema flights y FK compuestas de pertenencia.
 `shared` no posee tablas. El historial de
 Flyway vive en `public`. Las próximas migraciones usan números globales crecientes.
 Nunca modificar una migración aplicada: agregar otra.
@@ -168,7 +171,7 @@ Duffel, AirLabs y OpenSky se incorporarán detrás de puertos, con mocks y prueb
 que no dependan de servicios reales. No se permite scraping ni ofertas de OTAs.
 Caffeine, resiliencia y scheduler se añadirán cuando exista su primer consumidor.
 
-Próxima card: 4 — vuelos y asociación con pasajeros. Todavía no hay reservas de vuelos, providers ni jobs.
+Próxima card: 5 — búsqueda de vuelos. Los vuelos se registran manualmente; todavía no hay providers ni jobs.
 
 ## Catálogo local (CARD 1)
 
@@ -349,8 +352,107 @@ puede editarse o eliminarse mediante una ruta ajena. Un listado vacío devuelve
 items vacío: la versión sigue disponible en GET del viaje.
 
 No se borra un viaje con pasajeros. Las FK restringen eliminaciones y no hay
-cascadas. La asociación de pasajeros con segmentos de vuelo se agrega en CARD 4.
+cascadas. CARD 4 permite asignarlos a segmentos; un pasajero vinculado no puede
+eliminarse hasta quitar sus asignaciones de vuelo.
 Decisiones y pruebas: [CARD 3](docs/cards/card-3-passenger-management.md).
+
+## Segmentos de vuelo
+
+Cada registro representa un segmento concreto dentro de un tramo FLIGHT. Puede
+haber varios segmentos y distintos pasajeros por segmento. Las referencias a
+aerolínea y aeropuertos usan UUID del catálogo. Nuevas referencias requieren
+registros activos; las referencias históricas pueden conservarse si se desactivan.
+El número de vuelo usa el código IATA o ICAO de la aerolínea indicada y un sufijo
+numérico, con letra final opcional.
+
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| POST | `/api/v1/trips/{tripId}/legs/{legId}/flights` | Registrar segmento |
+| GET | `/api/v1/trips/{tripId}/legs/{legId}/flights` | Listado paginado |
+| GET | `/api/v1/flights/{flightId}` | Consultar detalles |
+| PATCH | `/api/v1/flights/{flightId}` | Editar con versión del viaje |
+| DELETE | `/api/v1/flights/{flightId}?version=3` | Eliminar segmento y sus datos dependientes |
+| GET | `/api/v1/flights/{flightId}/history` | Historial paginado |
+
+Ejemplo de alta: reemplazar los UUID por referencias reales y version por la revisión
+actual del viaje. El número debe corresponder a la aerolínea elegida.
+
+```json
+{
+  "version": 2,
+  "data": {
+    "airlineId": "<airline-uuid>",
+    "flightNumber": "AR1132",
+    "flightDate": "2026-10-01",
+    "originAirportId": "<origin-airport-uuid>",
+    "destinationAirportId": "<destination-airport-uuid>",
+    "schedule": {
+      "scheduledDeparture": "2026-10-01T22:00:00Z",
+      "scheduledArrival": "2026-10-02T10:00:00Z"
+    },
+    "operation": {"status": "SCHEDULED"},
+    "booking": {
+      "bookingReference": "ABC123",
+      "pricePaid": {"amount": 350.25, "currency": "EUR"},
+      "ticketTotal": {"amount": 900, "currency": "EUR"}
+    },
+    "connectionProtection": "UNKNOWN",
+    "passengers": [{"passengerId": "<passenger-uuid>", "seat": "12A", "baggage": "1 bag"}]
+  }
+}
+```
+
+flightDate es la fecha de salida **local del aeropuerto de origen**; si se conoce
+scheduledDeparture, su día en esa zona debe coincidir. Los horarios absolutos se
+persisten en UTC, con hasta microsegundos. Schedule es opcional: no se inventan
+horas. originalScheduledDeparture/Arrival conservan lo conocido al registrar,
+incluso si después se modifica o borra el horario actual.
+
+POST acepta `Idempotency-Key` opcional con UUID globalmente único, que pasa a ser
+el ID del vuelo. Un reintento con el mismo contenido normalizado devuelve el mismo
+vuelo sin avanzar la versión. Distinto contenido o viaje con esa clave produce
+409. La garantía dura mientras exista ese registro; sin clave, cada POST es una
+nueva alta. Modificar o borrar el registro no conserva una respuesta histórica
+de idempotencia. Las altas usan INSERT explícito para impedir que una clave
+concurrente de otro viaje sobrescriba el registro mediante merge.
+
+PATCH usa application/json: version más los campos de data que se quieran cambiar,
+directamente en la raíz. **Los grupos enviados reemplazan el grupo completo**;
+los grupos omitidos se conservan. Por ejemplo:
+
+```json
+{"version": 3, "flightNumber": "AR1134", "operation": {"status": "BOARDING", "departureGate": "14"}}
+```
+
+operation requiere status y reemplaza sus cuatro campos de terminal/puerta;
+enviar su contenido completo si se quieren conservar. booking y schedule también
+se reemplazan completos; null los limpia. passengers reemplaza todas las
+asignaciones, [] o null las quita. No se pueden cambiar id, tripId ni tripLegId.
+Una lista admite hasta 100 pasajeros distintos, todos del mismo viaje.
+
+El precio del segmento (booking.pricePaid), el total del ticket (booking.ticketTotal)
+y el precio de cada pasajero son observaciones de distinto alcance: **no sumarlos**.
+No se distribuye un total entre escalas ni pasajeros. amountUsd queda null si no
+hay conversión conocida; para USD coincide con amount. No hay conversiones externas.
+El PNR puede repetirse y no identifica de forma única un ticket ni acredita protección.
+connectionProtection expresa protección de la conexión de entrada al segmento:
+SAME_TICKET, SEPARATE_TICKETS o UNKNOWN, declarada explícitamente.
+
+Los cambios de número, estado, terminales y puertas generan historial. Las ediciones
+manuales pueden corregir un estado anterior y quedan registradas; las futuras
+actualizaciones de proveedores necesitarán su propia política temporal. Cancelar
+un vuelo sólo cambia ese segmento. El provider es MANUAL y lastSyncedAt es null.
+
+El registro no determina cobertura completa de una ruta por pasajero. Los estados
+de Trip/TripLeg mantienen la política declarada en CARD 2 hasta definir esa regla,
+sin deducir cobertura de la mera existencia de un segmento o PNR. Los vuelos tampoco
+se reordenan ni se restringen a una ruta idéntica entre todos los pasajeros.
+
+La eliminación de un vuelo quita explícitamente su historial y sus asignaciones,
+sin borrar pasajeros ni otros vuelos. Las FK impiden borrar tramos/pasajeros
+referenciados o cambiar a terrestre un tramo que todavía contiene vuelos.
+Ambos listados usan page desde 0, size por defecto 20 y máximo 100.
+Detalles y resultados: [CARD 4](docs/cards/card-4-flight-segments.md).
 
 ## Errores HTTP y logs
 

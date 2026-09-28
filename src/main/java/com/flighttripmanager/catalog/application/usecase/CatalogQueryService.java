@@ -32,6 +32,10 @@ public class CatalogQueryService implements CatalogLookup {
         return mapper.toView(store.airportById(Objects.requireNonNull(id))
                 .orElseThrow(() -> new CatalogNotFoundException("AIRPORT_NOT_FOUND")));
     }
+    @Override public AirlineView airlineById(UUID id) {
+        return mapper.toView(store.airlineById(Objects.requireNonNull(id))
+                .orElseThrow(() -> new CatalogNotFoundException("AIRLINE_NOT_FOUND")));
+    }
     @Override public CatalogPage<AirlineView> airlines(CatalogQuery query, boolean active) {
         return map(store.airlines(query, active), mapper::toView);
     }

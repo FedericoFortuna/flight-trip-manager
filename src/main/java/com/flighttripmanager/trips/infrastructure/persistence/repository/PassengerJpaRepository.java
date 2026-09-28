@@ -7,4 +7,5 @@ public interface PassengerJpaRepository extends JpaRepository<PassengerJpaEntity
     Optional<PassengerJpaEntity> findByTripIdAndId(UUID tripId, UUID id);
     Page<PassengerJpaEntity> findByTripId(UUID tripId, Pageable pageable);
     boolean existsByTripId(UUID tripId);
+    long countByTripIdAndIdIn(UUID tripId, Collection<UUID> ids);
 }
