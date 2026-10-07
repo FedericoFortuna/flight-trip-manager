@@ -308,7 +308,8 @@ reemplaza operation para impedir un cambio de estado implícito al editar una pu
 
 ## Decisiones funcionales por cerrar antes de sus cards
 
-- Cobertura de reserva por pasajeros y trayectos.
+- CARD 6 usa confirmación manual BOOKED del tramo para cerrar alternativas;
+  inferencia automática de cobertura por pasajeros/trayectos sigue pendiente.
 - Protección de conexión explícita, sin inferir garantía a partir del PNR.
 - Precio compartido sin Booking ni doble contabilización.
 - Alternativas round-trip resueltas en ADR 008: desplazar ida/regreso juntos.
@@ -340,3 +341,35 @@ precios inventados. Mock y Duffel test están marcados como no comprables.
 
 Decisiones, límites, fórmula, pruebas y reevaluación:
 [CARD 5](cards/card-5-flight-search.md).
+
+## ADR 009 — Alternativas durables, precios observados y cierre explícito
+
+SavedFlightOption y FlightPriceSnapshot pertenecen a flightsearch. Las ofertas
+temporales sólo se vuelven durables por selección explícita del usuario. El
+endpoint recibe referencias a la búsqueda/oferta, no precios arbitrarios.
+Tres posiciones únicas (1..3) por tramo limitan tanto opciones activas como
+inactivas. Eliminar una opción elimina explícitamente sus precios y libera lugar.
+
+Cada mutación bloquea el viaje mediante contrato público de trips, valida versión
+y avanza una revisión en la misma transacción. Consultas ensambladas usan
+REPEATABLE_READ. No hay acceso cruzado a entidades/repositorios. Las búsquedas
+externas se realizan antes de la selección; guardar/observar no consume API.
+
+El usuario confirmó cierre explícito a nivel de tramo. Se reutiliza declaredStatus:
+BOOKED y otros estados fuera de PLANNED/SEARCHING/COMPARING cierran alternativas.
+TripService llama a su puerto de ciclo de vida, cuyo adaptador publica el evento
+público LegAlternativesClosed. Un listener síncrono de flightsearch desactiva las
+opciones dentro de la transacción MANDATORY. Un fallo revierte ambas operaciones.
+No hay cola, procesamiento posterior al commit ni dependencia inversa trips→flightsearch.
+Las pruebas cubren la carrera de confirmación contra guardado bajo el bloqueo común.
+
+Reabrir no reactiva alternativas históricas. Cambiar ruta también las desactiva.
+Las FK impiden borrar tramos con opciones o cambiar su tipo a terrestre. La
+confirmación no pretende demostrar cobertura aérea ni inferir protección del PNR.
+
+El snapshot inicial es inmutable. Nuevos precios se anexan conservando proveedor,
+moneda, monto, origen de observación y faltantes. Sólo se comparan observaciones
+del mismo producto (itinerario, proveedor, pasajeros, cabina, equipaje y modo).
+No se distribuye un total round-trip entre tramos y no se inventa desglose de tarifa.
+Identidad de replay: opción + búsqueda + oferta; no se deduplica entre proveedores.
+Detalles y límites: [CARD 6](cards/card-6-saved-flight-options.md).

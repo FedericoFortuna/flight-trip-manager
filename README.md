@@ -19,6 +19,8 @@ CARD 4 agrega segmentos de vuelo manuales, pasajeros por segmento, importes cono
 historial de número/estado/terminal/puerta e idempotencia opcional de altas.
 CARD 5 agrega búsqueda one-way/round-trip, comparación de hasta siete fechas,
 filtros, ranking determinístico, historial de criterios y adaptador Duffel de prueba.
+CARD 6 permite guardar hasta tres alternativas por tramo, conservar la oferta
+e historial de precios y desactivar opciones al confirmar la reserva del tramo.
 Local/Compose usa ofertas sintéticas explícitas; Duffel requiere activación y token
 de test. No hay carga automática de datos ni llamadas externas al arrancar.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
@@ -521,6 +523,72 @@ Se responde 200 con partial si faltan fechas/proveedores o hubo truncamiento;
 si todos fallan, 503. Saturación local produce 429. Un resultado vacío válido es 200.
 El historial también registra intentos nuevos sin resultados; los aciertos de
 caché no agregan registros. No se persisten ofertas ni respuestas crudas.
+
+## Alternativas guardadas (CARD 6)
+
+Guardar una oferta devuelta por CARD 5:
+
+```http
+POST /api/v1/trips/{tripId}/legs/{legId}/saved-options
+Content-Type: application/json
+
+{
+  "version": 2,
+  "searchId": "UUID devuelto por búsqueda",
+  "provider": "MOCK",
+  "providerOfferId": "identificador de la oferta seleccionada"
+}
+```
+
+El servidor recupera el precio y el itinerario de su caché; no recibe importes
+editables en esta operación. La oferta debe seguir vigente al guardar. Después,
+la copia durable es consultable aunque expire el resultado de búsqueda o se
+reinicie la aplicación. initialOffer conserva la observación inicial y no es
+una cotización vigente. Los flags synthetic/testMode permanecen visibles.
+
+Máximo **tres opciones retenidas por tramo**, incluidas las inactivas. Para liberar
+un lugar se elimina explícitamente una opción, junto con su historial de precios.
+Se exige tramo FLIGHT con ambos extremos AIRPORT y coincidencia con origen/destino
+de ida. Una oferta ida/vuelta se guarda completa en el tramo de ida; su total no se
+reparte ni se copia automáticamente al regreso. Se conservan alternativas de
+distintos proveedores aunque correspondan a los mismos vuelos.
+
+- GET `/api/v1/trips/{tripId}/legs/{legId}/saved-options`: lista paginada.
+- GET `/api/v1/saved-flight-options/{id}`: copia durable con tripVersion.
+- DELETE `/api/v1/saved-flight-options/{id}?version=N`: borra opción e historial.
+- GET `/api/v1/saved-flight-options/{id}/price-history`: precios, más recientes primero.
+- POST `/api/v1/saved-flight-options/{id}/price-observations`: agrega observación
+  usando el mismo cuerpo de selección, con la versión actual del viaje.
+
+La nueva observación debe corresponder al mismo proveedor, itinerario completo,
+pasajeros, cabina y equipaje. No dispara consultas externas: primero se realiza
+una nueva búsqueda. La misma selección searchId/provider/offer se puede reenviar
+sin duplicar registros ni incrementar la versión. Otra búsqueda puede aportar
+una observación adicional aunque el precio coincida. Cada observación conserva
+moneda original; amountUsd queda null si no hay conversión conocida.
+basePrice/baggagePrice/seatPrice quedan null cuando no hay desglose: el total
+reportado no se transforma en una tarifa base ficticia ni en costo completo.
+
+La confirmación explícita usa el endpoint existente:
+
+```http
+PATCH /api/v1/trips/{tripId}/legs/{legId}
+Content-Type: application/json
+
+{"version": 3, "status": "BOOKED"}
+```
+
+La misma transacción desactiva alternativas del tramo y bloquea nuevas altas.
+Registrar un segmento o PNR aislado no confirma cobertura de todos los pasajeros.
+PLANNED/SEARCHING/COMPARING admiten alternativas; los demás estados las cierran.
+Volver a un estado de planificación permite nuevas opciones, pero no reactiva
+las anteriores. Cambiar origen/destino desactiva opciones con ROUTE_CHANGED.
+Antes de eliminar un tramo o cambiarlo a terrestre, eliminar sus opciones.
+
+Mutaciones requieren version del viaje; conflictos y cupo completo devuelven
+409, fuente expirada/desconocida 410 y selección incompatible 400. Listados usan
+page desde 0 y size por defecto 20, máximo 100.
+Detalle, migración y resultados: [CARD 6](docs/cards/card-6-saved-flight-options.md).
 
 ## Errores HTTP y logs
 

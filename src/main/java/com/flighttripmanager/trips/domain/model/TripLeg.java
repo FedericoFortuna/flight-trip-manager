@@ -46,4 +46,8 @@ public record TripLeg(UUID id, UUID tripId, Place origin, Place destination, Tra
         return new TripLeg(id, tripId, origin, destination, transportType, departureDate, departureDateTime,
                 arrivalDate, arrivalDateTime, declaredStatus, order, createdAt, now);
     }
+    public boolean acceptingAlternatives() {
+        return transportType == TransportType.FLIGHT
+            && (declaredStatus == LegStatus.PLANNED || declaredStatus == LegStatus.SEARCHING || declaredStatus == LegStatus.COMPARING);
+    }
 }

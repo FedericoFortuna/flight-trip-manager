@@ -11,7 +11,7 @@ import com.flighttripmanager.trips.domain.model.*;
 import static com.flighttripmanager.trips.application.contract.TripsException.Reason.*;
 
 @Service
-public class TripFlightService implements TripFlightAccess {
+public class TripFlightService implements TripFlightAccess, com.flighttripmanager.trips.application.port.in.TripOptionAccess {
     private final TripStore trips;
     private final PassengerStore passengers;
     private final Clock clock;
@@ -38,6 +38,16 @@ public class TripFlightService implements TripFlightAccess {
     }
     private Trip require(UUID id, boolean lock) {
         return trips.find(id, lock).orElseThrow(() -> new TripsException(TRIP_NOT_FOUND, "tripId"));
+    }
+    @Override @Transactional(propagation = Propagation.MANDATORY)
+    public OptionTripContext inspectOptions(UUID tripId, UUID legId, boolean lock) {
+        Trip trip = require(tripId, lock);
+        context(trip, legId);
+        var leg = trip.legs().stream().filter(item -> item.id().equals(legId)).findFirst().orElseThrow();
+        return new OptionTripContext(trip.version(), trip.updatedAt(),
+            new PlaceRef(PlaceTypeValue.valueOf(leg.origin().kind().name()), leg.origin().id()),
+            new PlaceRef(PlaceTypeValue.valueOf(leg.destination().kind().name()), leg.destination().id()),
+            leg.acceptingAlternatives());
     }
     private Trip edit(UUID id, long version) {
         if (version < 0) throw new TripsException(INVALID_REQUEST, "version");

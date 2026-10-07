@@ -28,4 +28,6 @@ public class JpaSearchHistory implements SearchHistoryStore {
         try{return new CriteriaHistory(entity.getId(),entity.getCreatedAt(),json.readValue(entity.getCriteria(),CriteriaData.class));}
         catch(JsonProcessingException e){throw new IllegalStateException("Stored search criteria could not be read");}
     }
+    @Override @Transactional(readOnly=true)
+    public java.util.Optional<CriteriaHistory> find(java.util.UUID id){return repository.findById(id).map(this::read);}
 }

@@ -4,6 +4,7 @@ import com.flighttripmanager.flightsearch.domain.model.*;
 import com.flighttripmanager.flightsearch.application.contract.*;
 @Mapper(componentModel="spring",unmappedTargetPolicy=ReportingPolicy.ERROR)
 public interface SearchMapper {
+    SearchOffer domain(OfferData data);
     SearchCriteria domain(CriteriaData data);
     CriteriaData data(SearchCriteria criteria);
     RankedData data(SearchRanking.Ranked ranked);

@@ -23,9 +23,12 @@ public class TripService implements TripManagement {
     private final TripMapper mapper;
     private final Clock clock;
     private final PassengerStore passengers;
-    public TripService(TripStore store, CatalogPlaces places, TripMapper mapper, Clock clock, PassengerStore passengers) {
+    private final LegAlternativesLifecycle alternatives;
+    public TripService(TripStore store, CatalogPlaces places, TripMapper mapper, Clock clock, PassengerStore passengers,
+            LegAlternativesLifecycle alternatives) {
         this.store = store; this.places = places; this.mapper = mapper; this.clock = clock;
         this.passengers = passengers;
+        this.alternatives = alternatives;
     }
     @Override @Transactional
     public TripView create(CreateTrip command) {
@@ -103,6 +106,10 @@ public class TripService implements TripManagement {
             if (!changedLeg.destination().equals(old.destination())) places.requireUsable(changedLeg.destination());
             Trip changed = trip.withLegs(trip.legs().stream().map(item -> item.id().equals(legId) ? changedLeg : item).toList(), now);
             store.save(changed);
+            if (!changedLeg.acceptingAlternatives())
+                alternatives.close(tripId, legId, "LEG_CLOSED", now);
+            else if (!old.origin().equals(changedLeg.origin()) || !old.destination().equals(changedLeg.destination()))
+                alternatives.close(tripId, legId, "ROUTE_CHANGED", now);
             return mapper.view(changedLeg, changed.version(), now());
         });
     }
