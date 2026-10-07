@@ -7,3 +7,5 @@ springdoc:
   swagger-ui:
     enabled: true
     path: /swagger-ui.html
+flight-search:
+  mode: ${FLIGHT_SEARCH_MODE:mock}

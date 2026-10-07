@@ -17,7 +17,10 @@ CARD 3 incorpora pasajeros por viaje, listado paginado y edición parcial de nom
 y notas, integrada con la versión del viaje.
 CARD 4 agrega segmentos de vuelo manuales, pasajeros por segmento, importes conocidos,
 historial de número/estado/terminal/puerta e idempotencia opcional de altas.
-No hay integraciones externas activas ni carga automática de datos.
+CARD 5 agrega búsqueda one-way/round-trip, comparación de hasta siete fechas,
+filtros, ranking determinístico, historial de criterios y adaptador Duffel de prueba.
+Local/Compose usa ofertas sintéticas explícitas; Duffel requiere activación y token
+de test. No hay carga automática de datos ni llamadas externas al arrancar.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
 
 Validación de CARD 0 (2026-09-23): `clean verify` correcto (1 test unitario y 5 de
@@ -453,6 +456,71 @@ sin borrar pasajeros ni otros vuelos. Las FK impiden borrar tramos/pasajeros
 referenciados o cambiar a terrestre un tramo que todavía contiene vuelos.
 Ambos listados usan page desde 0, size por defecto 20 y máximo 100.
 Detalles y resultados: [CARD 4](docs/cards/card-4-flight-segments.md).
+
+## Búsqueda de vuelos (CARD 5)
+
+Los aeropuertos deben existir y estar activos en el catálogo. La fecha de salida
+es local al origen, desde hoy hasta 365 días; ida y regreso se desplazan juntos
+en alternativas ±1/2/3, preservando la duración del viaje. Multicity queda fuera.
+
+```http
+POST /api/v1/flight-search/search?page=0&size=20
+Content-Type: application/json
+
+{
+  "origin": "EZE",
+  "destination": "MAD",
+  "departureDate": "2026-12-10",
+  "returnDate": "2026-12-20",
+  "flexDays": 3,
+  "adults": 1,
+  "childAges": [],
+  "cabin": "ECONOMY",
+  "filters": {
+    "airlines": ["IB"],
+    "maxStops": 1,
+    "departureFrom": "08:00",
+    "departureTo": "23:00",
+    "maxDurationMinutes": 1200,
+    "checkedBagRequired": true,
+    "excludedAirports": []
+  }
+}
+```
+
+En mock quitar el filtro IB o usar ZZ, la aerolínea sintética. Los códigos EZE/MAD
+son ejemplos: importarlos primero al catálogo. Omitir returnDate para sólo ida.
+Hasta nueve pasajeros en total y un bebé menor de dos años por adulto.
+El horario y duración máxima se aplican a cada sentido; la duración incluye conexiones.
+El equipaje requerido debe estar incluido para todos los pasajeros y segmentos.
+
+- POST devuelve searchId, variantes con estado, advertencias y resultados paginados.
+- GET `/api/v1/flight-search/results/{searchId}` pagina sin llamar al proveedor.
+- GET `/api/v1/flight-search/history` lista únicamente criterios guardados.
+- page inicia en 0; size por defecto 20, máximo 100.
+
+El resultado distingue synthetic/testMode, importe original, amountUsd nullable,
+equipaje INCLUDED/NOT_INCLUDED/UNKNOWN y missingCosts. El precio es parcial: no se
+inventan importes de asiento, equipaje adicional o traslado. Las monedas se ordenan
+en grupos separados, USD primero; score menor significa mejor equilibrio dentro
+de su moneda. penalties explica precio, duración, escalas, horario, equipaje y
+datos faltantes. La fórmula y los pesos están en [CARD 5](docs/cards/card-5-flight-search.md).
+
+Configuración: `FLIGHT_SEARCH_MODE=mock|disabled|duffel`. El perfil general usa
+disabled; local y Compose usan mock. Para Duffel configurar `DUFFEL_ACCESS_TOKEN`
+con un token de **test** y mode=duffel. No hay fallback silencioso a mock.
+El cliente rechaza respuestas live, no compra ni crea órdenes. No se verificaron
+credenciales reales durante el desarrollo; los tests usan un servidor HTTP local.
+
+Los criterios equivalentes reutilizan resultados en memoria por 180 segundos,
+con hasta 32 búsquedas almacenadas y dos búsquedas nuevas concurrentes por proceso.
+Un reinicio/expulsión/TTL produce 410 al pedir resultados. Las ofertas vencidas
+se quitan sin recalcular su ranking; una página posterior puede tener menos ofertas.
+Las cantidades de cada variante describen la búsqueda original.
+Se responde 200 con partial si faltan fechas/proveedores o hubo truncamiento;
+si todos fallan, 503. Saturación local produce 429. Un resultado vacío válido es 200.
+El historial también registra intentos nuevos sin resultados; los aciertos de
+caché no agregan registros. No se persisten ofertas ni respuestas crudas.
 
 ## Errores HTTP y logs
 

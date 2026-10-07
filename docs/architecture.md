@@ -311,7 +311,32 @@ reemplaza operation para impedir un cambio de estado implícito al editar una pu
 - Cobertura de reserva por pasajeros y trayectos.
 - Protección de conexión explícita, sin inferir garantía a partir del PNR.
 - Precio compartido sin Booking ni doble contabilización.
-- Alcance de alternativas round-trip y siete variantes de fechas.
+- Alternativas round-trip resueltas en ADR 008: desplazar ida/regreso juntos.
 - Moneda USD nullable cuando no haya conversión fiable.
 - Identidad de operación aérea para compartir polling entre segmentos registrados.
 - Matriz de transiciones operativas y políticas de cierre del tracking.
+
+## ADR 008 — Búsquedas acotadas y resultados efímeros
+
+FlightSearchProvider es un puerto saliente independiente; Duffel y mock sólo
+implementan ese contrato. El dominio contiene criterios, ofertas y ranking sin
+dependencias de Spring/JPA/Jackson. MapStruct enlaza DTO, contratos y dominio.
+La integración de catálogo usa CatalogLookup, sin repositorios cruzados.
+
+El usuario confirmó desplazar ambas fechas de round-trip juntas, hasta siete
+variantes y con estancia constante. Se visita primero la fecha elegida y luego
+las alternativas próximas. Un deadline, cupo local por ventana y circuit breaker
+acotan consumo; los fallos se expresan por variante. No se fusionan ofertas.
+
+Sólo los criterios normalizados y fecha de intento se guardan en JSONB. La
+transacción termina antes de llamar al proveedor. Caffeine conserva resultados
+temporalmente para paginación y solicitudes equivalentes; no constituye un
+snapshot durable ni una alternativa guardada. La CARD 6 implementará esa intención.
+
+El ranking usa moneda original y nunca compara numéricamente monedas distintas.
+USD se conserva cuando el proveedor devuelve USD; el resto tiene amountUsd null.
+Faltantes de costos son explícitos, con penalización configurable sin asignarles
+precios inventados. Mock y Duffel test están marcados como no comprables.
+
+Decisiones, límites, fórmula, pruebas y reevaluación:
+[CARD 5](cards/card-5-flight-search.md).

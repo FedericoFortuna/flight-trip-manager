@@ -47,3 +47,22 @@ logging:
     format:
       console: com.flighttripmanager.shared.infrastructure.logging.SafeStructuredLogFormatter
       file: com.flighttripmanager.shared.infrastructure.logging.SafeStructuredLogFormatter
+flight-search:
+  mode: ${FLIGHT_SEARCH_MODE:disabled}
+  duffel-token: ${DUFFEL_ACCESS_TOKEN:}
+  result-ttl-seconds: ${SEARCH_RESULT_TTL_SECONDS:180}
+  cache-entries: ${SEARCH_CACHE_ENTRIES:32}
+  concurrent-searches: ${SEARCH_CONCURRENCY:2}
+  deadline-seconds: ${SEARCH_DEADLINE_SECONDS:45}
+  max-offers-per-variant: ${SEARCH_MAX_OFFERS_PER_VARIANT:100}
+  connect-timeout-ms: ${SEARCH_CONNECT_TIMEOUT_MS:1500}
+  request-timeout-ms: ${SEARCH_REQUEST_TIMEOUT_MS:8000}
+  supplier-timeout-ms: ${SEARCH_SUPPLIER_TIMEOUT_MS:5000}
+  max-attempts: ${SEARCH_MAX_ATTEMPTS:2}
+  retry-delay-ms: ${SEARCH_RETRY_DELAY_MS:100}
+  max-retry-delay-ms: ${SEARCH_MAX_RETRY_DELAY_MS:1000}
+  requests-per-window: ${SEARCH_REQUESTS_PER_WINDOW:30}
+  window-seconds: ${SEARCH_WINDOW_SECONDS:60}
+  circuit-threshold: ${SEARCH_CIRCUIT_THRESHOLD:3}
+  circuit-seconds: ${SEARCH_CIRCUIT_SECONDS:30}
+  max-response-bytes: ${SEARCH_MAX_RESPONSE_BYTES:4194304}

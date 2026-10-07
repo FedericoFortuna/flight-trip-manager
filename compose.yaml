@@ -19,6 +19,8 @@ services:
     build: .
     environment:
       SPRING_PROFILES_ACTIVE: local
+      FLIGHT_SEARCH_MODE: ${FLIGHT_SEARCH_MODE:-mock}
+      DUFFEL_ACCESS_TOKEN: ${DUFFEL_ACCESS_TOKEN:-}
       DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-flight_trip_manager}
       DB_USERNAME: ${DB_USERNAME:?Set DB_USERNAME in .env}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
