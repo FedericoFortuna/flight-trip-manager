@@ -373,3 +373,33 @@ del mismo producto (itinerario, proveedor, pasajeros, cabina, equipaje y modo).
 No se distribuye un total round-trip entre tramos y no se inventa desglose de tarifa.
 Identidad de replay: opción + búsqueda + oferta; no se deduplica entre proveedores.
 Detalles y límites: [CARD 6](cards/card-6-saved-flight-options.md).
+
+## ADR 010 — Presupuesto explícito y saldo calculado desde el registro de gastos
+
+budgets depende únicamente de contratos públicos de trips y errores compartidos.
+TripBudgetAccess aporta pertenencia, bloqueo y revisión; el límite total permanece
+en Trip.totalBudgetUsd. No se duplican reservas ni se infiere identidad de gasto a
+partir de PNR, número de vuelo o una oferta round-trip.
+
+TransportExpense puede contener estimación y real. Para cada registro, la proyección
+elige el real si existe; de lo contrario la estimación. Un real sin conversión USD
+no recupera silenciosamente el USD de una estimación anterior. Los costos compartidos
+sin reparto conocido permanecen a nivel del viaje y se contabilizan una sola vez.
+referenceKey es explícita y única por viaje; sin ella no se promete deduplicación.
+
+Las monedas originales se agrupan separadas y el subtotal USD conocido conserva un
+contador de conversiones faltantes. El saldo definitivo queda null si el total
+correspondiente está incompleto. Los límites por categoría/tramo no se suman entre
+sí; son dos vistas de planificación y pueden producir advertencias de exceso.
+
+Las escrituras bloquean el padre, validan versión y avanzan una revisión dentro de
+la misma transacción. Lecturas compuestas usan REPEATABLE_READ. Se agregan importes
+en PostgreSQL, no cargando todos los gastos en memoria. No se almacenan saldos
+derivados ni se recalculan al editar campos ajenos al presupuesto: GET devuelve el
+estado actual del registro explícito. Confirmación/cancelación no inventa cargos
+ni reembolsos. No hay llamadas externas, caché nueva, colas ni dependencias Maven.
+
+Por instrucción del usuario, desde CARD 7 la validación de esta entrega usa Docker,
+HTTP/curl y comprobaciones SQL, sin agregar ni ejecutar tests unitarios. Las suites
+y gates históricos se conservan; no se anuncia su ejecución ni una cobertura nueva.
+Detalle: [CARD 7](cards/card-7-budget.md).

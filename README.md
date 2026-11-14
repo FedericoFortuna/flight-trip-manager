@@ -21,6 +21,8 @@ CARD 5 agrega búsqueda one-way/round-trip, comparación de hasta siete fechas,
 filtros, ranking determinístico, historial de criterios y adaptador Duffel de prueba.
 CARD 6 permite guardar hasta tres alternativas por tramo, conservar la oferta
 e historial de precios y desactivar opciones al confirmar la reserva del tramo.
+CARD 7 incorpora presupuesto total, límites por categoría/tramo y gastos manuales
+de transporte, con estimación, importe real y saldos que explicitan conversiones faltantes.
 Local/Compose usa ofertas sintéticas explícitas; Duffel requiere activación y token
 de test. No hay carga automática de datos ni llamadas externas al arrancar.
 Los contratos y paquetes internos se incorporan por cards, evitando clases vacías.
@@ -589,6 +591,90 @@ Mutaciones requieren version del viaje; conflictos y cupo completo devuelven
 409, fuente expirada/desconocida 410 y selección incompatible 400. Listados usan
 page desde 0 y size por defecto 20, máximo 100.
 Detalle, migración y resultados: [CARD 6](docs/cards/card-6-saved-flight-options.md).
+
+## Presupuesto de transporte (CARD 7)
+
+El presupuesto usa un registro explícito de gastos. No suma automáticamente importes
+de vuelos, tickets, pasajeros o alternativas: pueden representar el mismo costo.
+Un ticket compartido se registra una sola vez; si no se conoce su reparto, se deja
+sin legId y aparece en unallocated. referenceKey identifica el gasto contable dentro
+del viaje y evita duplicarlo; no se deduce del PNR.
+
+```http
+PUT /api/v1/trips/{tripId}/budget
+Content-Type: application/json
+
+{"version":1,"totalBudgetUsd":1000,"categories":{"FLIGHTS":700,"TRAINS":200}}
+```
+
+PUT reemplaza total y categorías: categories={} elimina límites por categoría;
+totalBudgetUsd=null quita el límite total. Se reutiliza Trip.totalBudgetUsd,
+por lo que el PATCH de Trip existente también se refleja en esta consulta.
+
+```http
+PUT /api/v1/trips/{tripId}/legs/{legId}/budget
+Content-Type: application/json
+
+{"version":2,"amountUsd":500}
+```
+
+amountUsd=null elimina el límite del tramo. Los límites por categoría y por tramo
+son vistas independientes; no se suman al total. Se permite superarlo al planificar
+y se muestran advertencias. Los importes de límites admiten hasta dos decimales.
+
+```http
+POST /api/v1/trips/{tripId}/expenses
+Content-Type: application/json
+
+{
+  "version":3,
+  "category":"TRAINS",
+  "description":"Ticket de tren",
+  "referenceKey":"train-ticket-1",
+  "estimated":{"amount":200,"currency":"USD"},
+  "actual":{"amount":150,"currency":"EUR","amountUsd":165,"conversionNote":"Importe confirmado en resumen"}
+}
+```
+
+Categorías: FLIGHTS, TRAINS, BUSES, CAR y OTHER_TRANSPORT. legId es opcional;
+si está presente debe pertenecer al viaje y coincidir con el tipo de transporte.
+Se requiere estimated, actual o ambos. PUT del gasto reemplaza todos sus campos:
+conservar estimated al cargar actual permite compararlos. Los montos admiten hasta
+cuatro decimales, sin redondeo silencioso ni valores negativos.
+
+La proyección usa actual cuando existe, incluso si vale cero; si no, usa estimated.
+Nunca suma ambos para un mismo gasto. Las monedas originales se informan separadas.
+Para USD, amountUsd se completa con amount; para otra moneda queda null salvo
+conversión explícita, que requiere conversionNote. No se consultan tipos de cambio.
+
+GET budget devuelve total, categories y unallocated. Cada balance expone:
+
+- estimated/actual/forecast: knownUsd, missingUsdCount y originalAmounts por moneda.
+- remainingUsd: límite menos proyección, o null si falta límite/conversión.
+- remainingAfterActualUsd: límite menos gasto real, también nullable.
+
+Los saldos pueden ser negativos. accountingScope=MANUAL_LEDGER_ONLY y la advertencia
+EXPLICIT_TRANSPORT_EXPENSES_ONLY aclaran el alcance: no certifican que todos los
+costos del viaje estén registrados. Confirmar BOOKED no duplica gastos; cancelar
+un tramo no implica un reembolso. Los totales se calculan al consultarlos con el
+estado actual de la base, sin caché ni totales derivados persistidos.
+
+Consultas y administración:
+
+- GET/PUT `/api/v1/trips/{tripId}/budget`.
+- GET/PUT `/api/v1/trips/{tripId}/legs/{legId}/budget`.
+- GET `/api/v1/trips/{tripId}/budget/legs`, paginado.
+- POST/GET `/api/v1/trips/{tripId}/expenses`, listado paginado.
+- GET/PUT/DELETE `/api/v1/trips/{tripId}/expenses/{expenseId}`.
+
+Todas las mutaciones requieren la versión del viaje; DELETE la recibe en query.
+Listados: page desde 0, size por defecto 20 y máximo 100. PUT es reemplazo completo.
+Antes de borrar un tramo/viaje, quitar sus límites y gastos asociados.
+
+Validación de esta card, según la preferencia indicada el 14/11/2026: compilación
+sin tests unitarios, Docker aislado, curl y consultas SQL. No se midió cobertura
+nueva ni se ejecutó clean verify. Comandos, evidencia y límites en
+[CARD 7](docs/cards/card-7-budget.md).
 
 ## Errores HTTP y logs
 
